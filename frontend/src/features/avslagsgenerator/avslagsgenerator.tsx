@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { answerBoss, escalate, investigate, type BjarneCriticality, type BossCase, type BossQuestion, type BossReview, type Investigation, type PolicyId, type Turn } from "./investigation-api";
+import { answerBoss, escalate, handoffToInnbo, investigate, type BjarneCriticality, type BossCase, type BossQuestion, type BossReview, type InnboHandoff, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 import { BjarneTwists, ClauseSources } from "./clause-cards";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
@@ -26,7 +26,13 @@ const criticalityDescriptions: Record<BjarneCriticality, string> = {
 type Exchange = { answer: string; response: Investigation };
 type Escalation = { exchangeIndex: number; context: BossCase; question: BossQuestion; answer?: string; review?: BossReview };
 
-function VerdictCard({ result }: { result: Investigation }) {
+function VerdictCard({ result, onHandoff, handoff, handoffPending, handoffError }: {
+  result: Investigation;
+  onHandoff: () => void;
+  handoff?: InnboHandoff;
+  handoffPending: boolean;
+  handoffError?: string;
+}) {
   const issue = result.status === "possible_rejection";
   return (
     <Paper className={`reveal-card ${issue ? "reveal-issue" : "reveal-unknown"}`} p={{ base: "lg", sm: "xl" }} radius="lg" role="status">
@@ -36,9 +42,26 @@ function VerdictCard({ result }: { result: Investigation }) {
       {issue && result.possibleIssue ? <Text className="issue-note" mt="md">{result.possibleIssue}</Text> : null}
       {!issue ? <Text className="issue-note" mt="md">Mottaker: {result.thirdParty} (oppdiktet)</Text> : null}
       <Text mt="md">{result.reasoningSummary}</Text>
-      <Text fw={700} mt="lg">{result.coverage === "possible_rejection" ? "Mulig grunnlag mot dekning" : result.coverage === "possibly_covered" ? "Ingen relevant avslagsgrunn funnet" : "Dekning uavklart"}</Text>
+      <Text fw={700} mt="lg">{result.coverage === "possible_rejection" ? "Mulig grunnlag mot dekning" : "Dekning uavklart"}</Text>
       {result.source ? <Text size="sm" mt="sm">Kilde: <a href={result.source.url} target="_blank" rel="noreferrer">{result.source.product}, {result.source.section}, PDF-side {result.source.page}</a>. {result.source.excerpt}</Text> : null}
       {result.escalation ? <Text c="dimmed" size="sm" mt="lg">Bjarnes rent fiktive nødeskalering: {result.escalation}</Text> : null}
+      {result.handoffId ? (
+        <Stack mt="lg" gap="sm">
+          <Text>Reise-Bjarne foreslår at du prøver hos Innbo-Bjarne. Han sender med hele den fiktive samtalen.</Text>
+          <Button color="yellow" onClick={onHandoff} loading={handoffPending} disabled={Boolean(handoff)}>
+            Send saken til Innbo-Bjarne →
+          </Button>
+          {handoffError ? <Alert color="red" title="Overleveringen stoppet">{handoffError}</Alert> : null}
+          {handoff ? (
+            <Paper p="md" radius="md" withBorder aria-label="Svar fra Innbo-Bjarne">
+              <Badge color="red">INNBO-BJARNE · FIKTIVT SVAR</Badge>
+              <Text mt="sm" fw={700}>{handoff.line}</Text>
+              <Text c="dimmed" size="sm" mt="sm">Han fikk med seg: «{handoff.context}»</Text>
+              <Text c="dimmed" size="xs" mt="sm">Avslaget gjelder bare overleveringen i sketsjen, ikke dekning under Innbo Pluss.</Text>
+            </Paper>
+          ) : null}
+        </Stack>
+      ) : null}
       <Text c="dimmed" size="sm" mt="lg">Offentlige alminnelige vilkår er bare et oppslag. Dette er en leken vurdering, ikke en dekningsavgjørelse; den individuelle avtalen gjelder.</Text>
     </Paper>
   );
@@ -70,12 +93,14 @@ export function Avslagsgenerator() {
   const [escalations, setEscalations] = useState<Escalation[]>([]);
   const [bossDraft, setBossDraft] = useState("");
   const [pendingText, setPendingText] = useState("");
+  const [handoff, setHandoff] = useState<InnboHandoff>();
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
     mutationFn: ({ text, history, policy, tone }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality }) =>
       investigate(text, history, policy, tone),
   });
+  const handoffMutation = useMutation({ mutationFn: handoffToInnbo, onSuccess: setHandoff });
   const bossQuestionMutation = useMutation({
     mutationFn: ({ context }: { context: BossCase; exchangeIndex: number }) => escalate(context),
     onSuccess: (question, { exchangeIndex, context }) =>
@@ -153,6 +178,8 @@ export function Avslagsgenerator() {
     setEscalations([]);
     setBossDraft("");
     setPendingText("");
+    setHandoff(undefined);
+    handoffMutation.reset();
     setCriticality("neutral");
     setPolicyId("innboPluss");
   }
@@ -202,7 +229,9 @@ export function Avslagsgenerator() {
                         {!exchange.response.done ? <Text className="bjarne-question" mt="sm">{exchange.response.nextQuestion}</Text> : null}
                       </div>
                     </div>
-                    {latest?.done && index === exchanges.length - 1 ? <VerdictCard result={latest} /> : null}
+                    {latest?.done && index === exchanges.length - 1 ? <VerdictCard result={latest} onHandoff={() => {
+                      if (latest.handoffId) handoffMutation.mutate(latest.handoffId);
+                    }} handoff={handoff} handoffPending={handoffMutation.isPending} handoffError={handoffMutation.error?.message} /> : null}
                     {escalations.filter(({ exchangeIndex }) => exchangeIndex === index).map((escalation) =>
                       <div className="boss-exchange" key={index}>
                         <div className="message-row">

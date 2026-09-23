@@ -3,6 +3,9 @@ import { requestGateway } from "../../ai/gateway.js";
 import { minimumAnswers } from "../avslagsgenerator/investigation.js";
 import type { PolicyId } from "../avslagsgenerator/vilkar.js";
 
+const maxShowcaseTurns = minimumAnswers;
+const maxShowcaseHistoryTurns = maxShowcaseTurns - 1;
+
 const cases = [
   {
     id: "kaffeflom",
@@ -42,7 +45,14 @@ const answerSchema = {
 export const showcaseRouter = Router();
 
 showcaseRouter.get("/cases", (_request, response) => {
-  response.json(cases.map(({ id, policyId, title, category, claim }) => ({ id, policyId, title, category, claim })));
+  response.json(cases.map(({ id, title, policyId, category, claim }) => ({
+    id,
+    title,
+    policyId,
+    category,
+    claim,
+    maxTurns: maxShowcaseTurns,
+  })));
 });
 
 async function answerQuestion(request: Request, response: Response, next: NextFunction, boss: boolean) {
@@ -51,16 +61,23 @@ async function answerQuestion(request: Request, response: Response, next: NextFu
   const validText = (value: unknown, limit: number): value is string =>
     typeof value === "string" && value.trim().length > 0 && value.length <= limit;
 
-  if (!scenario || !validText(question, 500) || !Array.isArray(turns) || (boss ? turns.length !== minimumAnswers : turns.length >= minimumAnswers) ||
+  if (!scenario || !validText(question, 500) || !Array.isArray(turns) ||
+    (boss ? turns.length > maxShowcaseTurns : turns.length > maxShowcaseHistoryTurns) ||
     !turns.every((turn: unknown) => Boolean(turn) && typeof turn === "object" &&
       validText((turn as { question?: unknown }).question, 500) &&
       validText((turn as { answer?: unknown }).answer, 1500))) {
-    response.status(400).json({ error: "Velg en demosak og send ett gyldig spørsmål om gangen." });
+    response.status(400).json({ error: "Velg en demosak og send gyldig spørsmål og samtalehistorikk innen maks antall steg." });
     return;
   }
 
   try {
-    const input = `Saksfakta (kun disse er sanne): ${scenario.facts}\nOpprinnelig melding: ${scenario.claim}\nTidligere spørsmål og svar (JSON): ${JSON.stringify(turns)}\n${boss ? "Sjefens" : "Bjarnes"} nye spørsmål: ${JSON.stringify(question)}`;
+    const input = `Saksdata som JSON:\n${JSON.stringify({
+      facts: scenario.facts,
+      originalClaim: scenario.claim,
+      previousTurns: turns,
+      latestQuestion: question,
+      questionFrom: boss ? "Sjefen" : "Bjarne",
+    }, null, 2)}`;
     const candidate: unknown = JSON.parse(await requestGateway(input, instructions, "showcase_claimant_answer", answerSchema));
     if (!candidate || typeof candidate !== "object" || !("answer" in candidate) ||
       typeof candidate.answer !== "string" || !candidate.answer.trim() || candidate.answer.length > 1500) {

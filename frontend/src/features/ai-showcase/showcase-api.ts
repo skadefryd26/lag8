@@ -1,6 +1,6 @@
-import { answerBoss, escalate, investigate, type BjarneCriticality, type BossCase, type BossQuestion, type BossReview, type Investigation, type PolicyId, type Turn } from "../avslagsgenerator/investigation-api";
+import { answerBoss, escalate, handoffToInnbo, investigate, type BjarneCriticality, type BossCase, type BossQuestion, type BossReview, type Investigation, type PolicyId, type Turn } from "../avslagsgenerator/investigation-api";
 
-export type ShowcaseCase = { id: string; policyId: PolicyId; title: string; category: string; claim: string };
+export type ShowcaseCase = { id: string; title: string; policyId: PolicyId; category: string; claim: string; maxTurns: number };
 
 async function readResponse<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
@@ -35,3 +35,5 @@ export function askBoss(context: BossCase): Promise<BossQuestion> {
 export function getBossReview(context: BossCase, question: string, answer: string): Promise<BossReview> {
   return answerBoss(context, question, answer);
 }
+
+export const transferToInnbo = handoffToInnbo;
