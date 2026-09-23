@@ -30,10 +30,12 @@ investigationRouter.post("/investigate", async (request, response, next) => {
   }
 });
 
-function validBossCase(claim: unknown, turns: unknown, bjarne: unknown): bjarne is BjarneAssessment {
+export function validBossCase(claim: unknown, turns: unknown, bjarne: unknown): bjarne is BjarneAssessment {
   if (!validCase(claim, turns) || !bjarne || typeof bjarne !== "object") return false;
   const assessment = bjarne as Partial<BjarneAssessment>;
-  return validText(assessment.message, 2000) && validText(assessment.reasoningSummary, 2000) &&
+  // Mens Bjarne fortsatt undersøker er reasoningSummary ofte tom – sjefen skal kunne kalles inn likevel.
+  return validText(assessment.message, 2000) &&
+    typeof assessment.reasoningSummary === "string" && assessment.reasoningSummary.length <= 2000 &&
     ["investigating", "possible_rejection", "referred"].includes(assessment.status ?? "");
 }
 
