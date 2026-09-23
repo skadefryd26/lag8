@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { reviewByBoss, type BjarneAssessment } from "./boss.js";
+import { askBossQuestion, reviewByBoss, type BjarneAssessment } from "./boss.js";
 import { investigate, minimumAnswers, type BjarneCriticality, type Turn } from "./investigation.js";
 import { isPolicyId } from "./vilkar.js";
 
@@ -30,17 +30,37 @@ investigationRouter.post("/investigate", async (request, response, next) => {
   }
 });
 
+function validBossCase(claim: unknown, turns: unknown, bjarne: unknown): bjarne is BjarneAssessment {
+  if (!validCase(claim, turns) || !bjarne || typeof bjarne !== "object") return false;
+  const assessment = bjarne as Partial<BjarneAssessment>;
+  return validText(assessment.message, 2000) && validText(assessment.reasoningSummary, 2000) &&
+    ["investigating", "possible_rejection", "referred"].includes(assessment.status ?? "");
+}
+
 investigationRouter.post("/escalate", async (request, response) => {
   const { claim, turns, bjarne } = request.body ?? {};
-  if (!validCase(claim, turns) || !bjarne || typeof bjarne !== "object" ||
-    !validText(bjarne.message, 2000) || !validText(bjarne.reasoningSummary, 2000) ||
-    !["investigating", "possible_rejection", "referred"].includes(bjarne.status)) {
+  if (!validBossCase(claim, turns, bjarne)) {
     response.status(400).json({ error: "Sjefen trenger en fiktiv sak og Bjarnes siste vurdering." });
     return;
   }
 
   try {
-    response.json(await reviewByBoss(claim.trim(), turns, bjarne as BjarneAssessment));
+    response.json(await askBossQuestion(claim.trim(), turns, bjarne));
+  } catch (error) {
+    console.error("Sjefen kunne ikke svare:", error instanceof Error ? error.message : "Ukjent feil");
+    response.status(502).json({ error: "Sjefen klarte ikke å vurdere saken akkurat nå. Prøv igjen om litt." });
+  }
+});
+
+investigationRouter.post("/escalate/answer", async (request, response) => {
+  const { claim, turns, bjarne, question, answer } = request.body ?? {};
+  if (!validBossCase(claim, turns, bjarne) || !validText(question, 500) || !validText(answer, 1500)) {
+    response.status(400).json({ error: "Svar på sjefens spørsmål med en kort beskrivelse." });
+    return;
+  }
+
+  try {
+    response.json(await reviewByBoss(claim.trim(), turns, bjarne, question.trim(), answer.trim()));
   } catch (error) {
     console.error("Sjefen kunne ikke svare:", error instanceof Error ? error.message : "Ukjent feil");
     response.status(502).json({ error: "Sjefen klarte ikke å vurdere saken akkurat nå. Prøv igjen om litt." });

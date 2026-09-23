@@ -18,6 +18,11 @@ export type Investigation = {
   escalation: string;
 };
 
+export type BossQuestion = {
+  message: string;
+  question: string;
+};
+
 export type BossReview = {
   message: string;
   scrutiny: string;
@@ -47,8 +52,18 @@ export async function investigate(
   return postReview<Investigation>("investigate", { claim, turns, criticality, policyId });
 }
 
-export async function escalate(claim: string, turns: Turn[], bjarne: Investigation): Promise<BossReview> {
-  return postReview<BossReview>("escalate", {
+export type BossCase = { claim: string; turns: Turn[]; bjarne: Investigation };
+
+function bossPayload({ claim, turns, bjarne }: BossCase) {
+  return {
     claim, turns, bjarne: { message: bjarne.message, status: bjarne.status, reasoningSummary: bjarne.reasoningSummary },
-  });
+  };
+}
+
+export async function escalate(context: BossCase): Promise<BossQuestion> {
+  return postReview<BossQuestion>("escalate", bossPayload(context));
+}
+
+export async function answerBoss(context: BossCase, question: string, answer: string): Promise<BossReview> {
+  return postReview<BossReview>("escalate/answer", { ...bossPayload(context), question, answer });
 }

@@ -123,6 +123,9 @@ button { font: inherit; }
 .boss-card .eyebrow, .boss-avatar { color: #f5a398; }
 .boss-avatar { border-color: #f5a398; }
 .boss-bubble { border: 1px solid rgba(241, 121, 105, .5); background: #372420; }
+.boss-question { color: #f5a398; font-weight: 700; }
+.boss-exchange { display: grid; gap: 15px; }
+.boss-composer { margin-top: 0; border-color: rgba(241, 121, 105, .5); }
 .boss-card .issue-note { border-color: #f5a398; }
 .restart-button { margin-top: 16px; }
 @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }

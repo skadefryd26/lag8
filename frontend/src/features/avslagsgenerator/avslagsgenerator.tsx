@@ -2,7 +2,7 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { escalate, investigate, type BjarneCriticality, type BossReview, type Investigation, type PolicyId, type Turn } from "./investigation-api";
+import { answerBoss, escalate, investigate, type BjarneCriticality, type BossCase, type BossQuestion, type BossReview, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
 const claimQuestions = 2;
@@ -23,7 +23,7 @@ const criticalityDescriptions: Record<BjarneCriticality, string> = {
 };
 
 type Exchange = { answer: string; response: Investigation };
-type Escalation = { exchangeIndex: number; review: BossReview };
+type Escalation = { exchangeIndex: number; context: BossCase; question: BossQuestion; answer?: string; review?: BossReview };
 
 function VerdictCard({ result }: { result: Investigation }) {
   const issue = result.status === "possible_rejection";
@@ -67,6 +67,7 @@ export function Avslagsgenerator() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [bossDraft, setBossDraft] = useState("");
   const [pendingText, setPendingText] = useState("");
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -74,15 +75,24 @@ export function Avslagsgenerator() {
     mutationFn: ({ text, history, policy, tone }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality }) =>
       investigate(text, history, policy, tone),
   });
-  const bossMutation = useMutation({
-    mutationFn: ({ caseText, history, bjarne }: { caseText: string; history: Turn[]; bjarne: Investigation; exchangeIndex: number }) =>
-      escalate(caseText, history, bjarne),
-    onSuccess: (review, { exchangeIndex }) =>
-      setEscalations((previous) => [...previous, { exchangeIndex, review }]),
+  const bossQuestionMutation = useMutation({
+    mutationFn: ({ context }: { context: BossCase; exchangeIndex: number }) => escalate(context),
+    onSuccess: (question, { exchangeIndex, context }) =>
+      setEscalations((previous) => [...previous, { exchangeIndex, context, question }]),
+  });
+  const bossAnswerMutation = useMutation({
+    mutationFn: ({ context, question, answer }: { context: BossCase; question: string; answer: string; exchangeIndex: number }) =>
+      answerBoss(context, question, answer),
+    onSuccess: (review, { exchangeIndex, answer }) => {
+      setEscalations((previous) => previous.map((item) =>
+        item.exchangeIndex === exchangeIndex ? { ...item, answer, review } : item));
+      setBossDraft("");
+    },
   });
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
   const latestEscalated = escalations.some(({ exchangeIndex }) => exchangeIndex === exchanges.length - 1);
+  const unansweredEscalation = escalations.find(({ review }) => !review);
   const personalPhase = turns.length >= claimQuestions && !latest?.done;
 
   useEffect(() => {
@@ -92,10 +102,10 @@ export function Avslagsgenerator() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
-    if (!text || mutation.isPending || bossMutation.isPending || latest?.done) return;
+    if (!text || mutation.isPending || bossQuestionMutation.isPending || bossAnswerMutation.isPending || latest?.done) return;
 
     const history = started && latest ? [...turns, { question: latest.nextQuestion, answer: text }] : [];
-    bossMutation.reset();
+    bossQuestionMutation.reset();
     setPendingText(text);
     try {
       const result = await mutation.mutateAsync({ text: started ? claim : text, history, policy: policyId, tone: criticality });
@@ -103,14 +113,23 @@ export function Avslagsgenerator() {
       setTurns(history);
       setExchanges((previous) => [...previous, { answer: text, response: result }]);
       setDraft("");
-      if (result.status === "referred") {
-        bossMutation.mutate({ caseText: started ? claim : text, history, bjarne: result, exchangeIndex: exchanges.length });
+      if (result.status === "referred" && !unansweredEscalation) {
+        bossQuestionMutation.mutate({ context: { claim: started ? claim : text, turns: history, bjarne: result }, exchangeIndex: exchanges.length });
       }
     } catch {
       // Keep the draft for a retry; the mutation renders the error below the composer.
     } finally {
       setPendingText("");
     }
+  }
+
+  function submitBoss(event: FormEvent<HTMLFormElement>, escalation: Escalation) {
+    event.preventDefault();
+    const answer = bossDraft.trim();
+    if (!answer || bossAnswerMutation.isPending) return;
+    bossAnswerMutation.mutate({
+      context: escalation.context, question: escalation.question.question, answer, exchangeIndex: escalation.exchangeIndex,
+    });
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -122,12 +141,14 @@ export function Avslagsgenerator() {
 
   function restart() {
     mutation.reset();
-    bossMutation.reset();
+    bossQuestionMutation.reset();
+    bossAnswerMutation.reset();
     setClaim("");
     setDraft("");
     setTurns([]);
     setExchanges([]);
     setEscalations([]);
+    setBossDraft("");
     setPendingText("");
     setCriticality("neutral");
     setPolicyId("innboPluss");
@@ -154,7 +175,7 @@ export function Avslagsgenerator() {
             <Text className="eyebrow">SAKSNUMMER 001 · {latest?.done ? "AVSLUTTET" : personalPhase ? `BAKGRUNNSFORHØR ${turns.length + 1} / ${minimumAnswers}` : `SKADEFORHØR ${Math.min(turns.length + 1, claimQuestions)} / ${claimQuestions}`}</Text>
             <Group justify="space-between" align="end" gap="md">
               <Title order={1}>Bjarnes undersøkelse<span>.</span></Title>
-              <Button onClick={restart} variant="subtle" color="gray" size="sm" disabled={mutation.isPending || bossMutation.isPending}>Ny sak ↺</Button>
+              <Button onClick={restart} variant="subtle" color="gray" size="sm" disabled={mutation.isPending || bossQuestionMutation.isPending || bossAnswerMutation.isPending}>Ny sak ↺</Button>
             </Group>
           </section>
         )}
@@ -178,8 +199,37 @@ export function Avslagsgenerator() {
                       </div>
                     </div>
                     {latest?.done && index === exchanges.length - 1 ? <VerdictCard result={latest} /> : null}
-                    {escalations.filter(({ exchangeIndex }) => exchangeIndex === index).map(({ review }) =>
-                      <BossCard review={review} key={index} />)}
+                    {escalations.filter(({ exchangeIndex }) => exchangeIndex === index).map((escalation) =>
+                      <div className="boss-exchange" key={index}>
+                        <div className="message-row">
+                          <div className="avatar boss-avatar" aria-hidden="true">S</div>
+                          <div className="message-bubble boss-bubble">
+                            <Text className="bubble-label">SJEFEN · EKSTRA KONTROLL</Text>
+                            <Text>{escalation.question.message}</Text>
+                            <Text className="boss-question" mt="sm">{escalation.question.question}</Text>
+                          </div>
+                        </div>
+                        {escalation.answer ? <div className="message-row message-row-user"><div className="message-bubble user-bubble"><Text className="bubble-label">DU · TIL SJEFEN</Text><Text>{escalation.answer}</Text></div></div> : null}
+                        {escalation.review ? <BossCard review={escalation.review} /> : (
+                          <form className="composer boss-composer" onSubmit={(event) => submitBoss(event, escalation)}>
+                            <Textarea
+                              aria-label="Svar på sjefens spørsmål"
+                              placeholder="Svar sjefen med egne ord ..."
+                              minRows={2}
+                              autosize
+                              maxLength={1500}
+                              value={bossDraft}
+                              onChange={(event) => setBossDraft(event.currentTarget.value)}
+                              onKeyDown={onKeyDown}
+                              disabled={bossAnswerMutation.isPending}
+                            />
+                            <Button type="submit" color="red" mt="md" loading={bossAnswerMutation.isPending} disabled={!bossDraft.trim()}>
+                              Send svar til sjefen →
+                            </Button>
+                            {bossAnswerMutation.isError ? <Alert color="red" title="Sjefen svarte ikke" mt="md">{bossAnswerMutation.error.message} Svaret ditt er fortsatt her.</Alert> : null}
+                          </form>
+                        )}
+                      </div>)}
                   </div>
                 ))}
                 {pendingText ? (
@@ -188,7 +238,7 @@ export function Avslagsgenerator() {
                     <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble thinking-bubble"><span className="thinking-dots" aria-hidden="true">•••</span><Text>Bjarne leter febrilsk i papirene ...</Text></div></div>
                   </div>
                 ) : null}
-                {bossMutation.isPending ? (
+                {bossQuestionMutation.isPending ? (
                   <div className="message-row" role="status">
                     <div className="avatar boss-avatar" aria-hidden="true">S</div>
                     <div className="message-bubble boss-bubble thinking-bubble"><span className="thinking-dots" aria-hidden="true">•••</span><Text>Sjefen gjennomgår Bjarnes arbeid med lupe ...</Text></div>
@@ -205,18 +255,18 @@ export function Avslagsgenerator() {
               </Paper>
             )}
 
-            {started && latest && !latestEscalated ? (
+            {started && latest && !latestEscalated && !unansweredEscalation ? (
               <div className="escalation-actions">
                 <Button
                   variant="outline"
                   color="red"
-                  loading={bossMutation.isPending}
+                  loading={bossQuestionMutation.isPending}
                   disabled={mutation.isPending}
-                  onClick={() => bossMutation.mutate({ caseText: claim, history: turns, bjarne: latest, exchangeIndex: exchanges.length - 1 })}
+                  onClick={() => bossQuestionMutation.mutate({ context: { claim, turns, bjarne: latest }, exchangeIndex: exchanges.length - 1 })}
                 >
-                  {bossMutation.isError ? "Prøv sjefen igjen →" : "Be om sjefen →"}
+                  {bossQuestionMutation.isError ? "Prøv sjefen igjen →" : "Be om sjefen →"}
                 </Button>
-                {bossMutation.isError ? <Alert color="red" mt="sm" title="Sjefen svarte ikke">{bossMutation.error.message} Saken er fortsatt her.</Alert> : null}
+                {bossQuestionMutation.isError ? <Alert color="red" mt="sm" title="Sjefen svarte ikke">{bossQuestionMutation.error.message} Saken er fortsatt her.</Alert> : null}
               </div>
             ) : null}
 
@@ -249,14 +299,14 @@ export function Avslagsgenerator() {
                   disabled={mutation.isPending}
                 />
                 <Group justify="space-between" mt={started ? "md" : "lg"} gap="sm">
-                  <Text c="dimmed" size="xs">{bossMutation.isPending ? "Du kan skrive mens sjefen vurderer. Send når svaret er klart." : "Enter for å sende · Shift+Enter for ny linje"}</Text>
-                  <Button type="submit" color="yellow" size="md" loading={mutation.isPending} disabled={!draft.trim() || bossMutation.isPending}>
+                  <Text c="dimmed" size="xs">{bossQuestionMutation.isPending ? "Du kan skrive mens sjefen vurderer. Send når spørsmålet er klart." : "Enter for å sende · Shift+Enter for ny linje"}</Text>
+                  <Button type="submit" color="yellow" size="md" loading={mutation.isPending} disabled={!draft.trim() || bossQuestionMutation.isPending || bossAnswerMutation.isPending}>
                     {started ? "Send svar →" : "La Bjarne undersøke saken →"}
                   </Button>
                 </Group>
                 {mutation.isError ? <Alert color="red" title="Bjarne mistet tråden" mt="md">{mutation.error.message} Svaret ditt er fortsatt i feltet.</Alert> : null}
               </form>
-            ) : <Button className="restart-button" onClick={restart} color="yellow" size="lg" disabled={bossMutation.isPending}>Gi Bjarne en ny sak →</Button>}
+            ) : <Button className="restart-button" onClick={restart} color="yellow" size="lg" disabled={bossQuestionMutation.isPending || bossAnswerMutation.isPending}>Gi Bjarne en ny sak →</Button>}
 
             {!started && !pendingText ? <div className="examples"><Text className="eyebrow">TRENGER DU INSPIRASJON?</Text><Group gap="xs" mt="sm">{examples.map((example) => <button className="example-chip" key={example} onClick={() => setDraft(example)} type="button">{example} ↗</button>)}</Group></div> : null}
           </section>
@@ -270,8 +320,8 @@ export function Avslagsgenerator() {
             </Paper>
             <Paper className="case-status" p="lg" radius="lg" mt="md">
               <Text className="eyebrow">SAKSSTATUS</Text>
-              <Text className="status-title" mt="sm">{bossMutation.isPending ? "Hos sjefen" : latest?.done ? "Vurderingen er klar" : latestEscalated ? "Bjarne venter på svar" : started ? "Bjarne undersøker" : "Venter på skademelding"}</Text>
-              <Text c="dimmed" size="sm" mt="xs">{bossMutation.isPending ? "Du kan skrive til Bjarne mens sjefen vurderer." : latest?.done ? "Se konklusjonen i samtalen." : latestEscalated ? "Les sjefens vurdering og fortsett samtalen med Bjarne." : started ? "Han har fortsatt noen paragrafer igjen å snu." : "Beskriv en oppdiktet hendelse for å begynne."}</Text>
+              <Text className="status-title" mt="sm">{bossQuestionMutation.isPending || bossAnswerMutation.isPending ? "Hos sjefen" : unansweredEscalation ? "Sjefen venter på svar" : latest?.done ? "Vurderingen er klar" : latestEscalated ? "Bjarne venter på svar" : started ? "Bjarne undersøker" : "Venter på skademelding"}</Text>
+              <Text c="dimmed" size="sm" mt="xs">{bossQuestionMutation.isPending ? "Du kan skrive til Bjarne mens sjefen vurderer." : unansweredEscalation ? "Svar på sjefens spørsmål før sjefen konkluderer." : latest?.done ? "Se konklusjonen i samtalen." : latestEscalated ? "Les sjefens vurdering og fortsett samtalen med Bjarne." : started ? "Han har fortsatt noen paragrafer igjen å snu." : "Beskriv en oppdiktet hendelse for å begynne."}</Text>
               {latest?.relevantFacts.length ? <div className="fact-list"><Text className="eyebrow">DET VI VET</Text>{latest.relevantFacts.slice(0, 4).map((fact, index) => <Text size="sm" key={index}>↳ {fact}</Text>)}</div> : null}
             </Paper>
             <Text className="privacy-note">Bruk gjerne oppdiktede eksempler. Ikke del ekte personopplysninger.</Text>

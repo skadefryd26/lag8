@@ -4,7 +4,7 @@ import { test } from "node:test";
 import express from "express";
 import { investigationRouter } from "./investigation-router.js";
 
-test("boss escalation validates the case and returns a separate structured review", async () => {
+test("boss asks a question before issuing a verdict", async () => {
   const app = express();
   app.use(express.json());
   app.use("/api/avslagsgenerator", investigationRouter);
@@ -26,18 +26,25 @@ test("boss escalation validates the case and returns a separate structured revie
   };
   let gatewayCalls = 0;
   let malformed = false;
+  const question = "Hvordan var klokken sikret?";
 
   globalThis.fetch = async (input, init) => {
     if (String(input).startsWith("https://genai.gjensidige.io/")) {
       gatewayCalls++;
       const request = JSON.parse(String(init?.body));
-      assert.equal(request.text.format.name, "avslagsgenerator_boss");
+      assert.equal(request.text.format.name, gatewayCalls === 1 ? "avslagsgenerator_boss_question" : "avslagsgenerator_boss_verdict");
       assert.match(request.instructions, /Ikke dikt opp fakta/);
-      assert.equal(JSON.parse(request.input.slice(request.input.indexOf("{"))).claim, payload.claim);
+      const context = JSON.parse(request.input.slice(request.input.indexOf("{")));
+      assert.equal(context.claim, payload.claim);
+      if (gatewayCalls > 1) {
+        assert.equal(context.question, question);
+        assert.equal(context.answer, "Den lå i en låst skuff.");
+      }
       return new Response(JSON.stringify({
-        output: [{ content: [{ text: JSON.stringify(malformed ? { message: "Ufullstendig" } : {
+        output: [{ content: [{ text: JSON.stringify(malformed ? { message: "Ufullstendig" } :
+          gatewayCalls === 1 ? { message: "Bjarne, dette var da svært lite grundig.", question } : {
           message: "Bjarne, dette var da svært lite grundig.",
-          scrutiny: "Hvordan var klokken sikret?",
+          scrutiny: "Klokken lå i en låst skuff.",
           conclusion: "needs_information",
         }) }] }],
       }), { status: 200 });
@@ -46,27 +53,40 @@ test("boss escalation validates the case and returns a separate structured revie
   };
 
   try {
-    const post = (body: object) => nativeFetch(endpoint, {
+    const post = (path: string, body: object) => nativeFetch(`${endpoint}${path}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
-    const invalid = await post({ ...payload, bjarne: { ...payload.bjarne, status: "fiction" } });
+    const invalid = await post("", { ...payload, bjarne: { ...payload.bjarne, status: "fiction" } });
     assert.equal(invalid.status, 400);
     assert.equal(gatewayCalls, 0);
 
-    const valid = await post(payload);
-    assert.equal(valid.status, 200);
-    assert.deepEqual(await valid.json(), {
+    const questionResponse = await post("", payload);
+    assert.equal(questionResponse.status, 200);
+    assert.deepEqual(await questionResponse.json(), {
       message: "Bjarne, dette var da svært lite grundig.",
-      scrutiny: "Hvordan var klokken sikret?",
-      conclusion: "needs_information",
+      question,
     });
     assert.equal(gatewayCalls, 1);
 
+    const invalidAnswer = await post("/answer", { ...payload, question, answer: "" });
+    assert.equal(invalidAnswer.status, 400);
+    assert.equal(gatewayCalls, 1);
+
+    const answerPayload = { ...payload, question, answer: "Den lå i en låst skuff." };
+    const verdict = await post("/answer", answerPayload);
+    assert.equal(verdict.status, 200);
+    assert.deepEqual(await verdict.json(), {
+      message: "Bjarne, dette var da svært lite grundig.",
+      scrutiny: "Klokken lå i en låst skuff.",
+      conclusion: "needs_information",
+    });
+    assert.equal(gatewayCalls, 2);
+
     malformed = true;
-    const failed = await post(payload);
+    const failed = await post("/answer", answerPayload);
     assert.equal(failed.status, 502);
     assert.deepEqual(await failed.json(), { error: "Sjefen klarte ikke å vurdere saken akkurat nå. Prøv igjen om litt." });
-    assert.equal(gatewayCalls, 2);
+    assert.equal(gatewayCalls, 3);
   } finally {
     globalThis.fetch = nativeFetch;
     if (previousToken === undefined) delete process.env.AI_GATEWAY_TOKEN;
