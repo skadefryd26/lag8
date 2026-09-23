@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import type { BjarneCriticality, Investigation, Turn } from "../avslagsgenerator/investigation-api";
 import { answerAsClaimant, askBjarne, getShowcaseCases, type ShowcaseCase } from "./showcase-api";
+import { showcaseVerdict } from "./showcase-verdict";
 import "./ai-showcase.css";
 
 type Exchange = { answer: string; response: Investigation };
@@ -139,16 +140,16 @@ export function AiShowcase() {
                 <div className="showcase-roster" aria-label="Roller"><span>◉ SKADELIDT <small>AI · kjenner saksfakta</small></span><span>VS</span><span>◉ BJARNE <small>AI · undersøker saken</small></span></div>
                 <Stack className="showcase-transcript" gap="lg" aria-live="polite">
                   <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{activeCase.claim}</Text></div></div>
-                  {openingResult ? <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{openingResult.message}</Text>{!openingResult.done ? <Text className="bjarne-question" mt="sm">{openingResult.nextQuestion}</Text> : null}</div></div> : null}
+                  {openingResult ? <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{openingResult.done ? showcaseVerdict(openingResult).message : openingResult.message}</Text>{!openingResult.done ? <Text className="bjarne-question" mt="sm">{openingResult.nextQuestion}</Text> : null}</div></div> : null}
                   {exchanges.map(({ answer, response }, index) => (
                     <div className="showcase-exchange" key={index}>
                       <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{answer}</Text></div></div>
-                      <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{response.message}</Text>{!response.done ? <Text className="bjarne-question" mt="sm">{response.nextQuestion}</Text> : null}</div></div>
+                      <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{response.done ? showcaseVerdict(response).message : response.message}</Text>{!response.done ? <Text className="bjarne-question" mt="sm">{response.nextQuestion}</Text> : null}</div></div>
                     </div>
                   ))}
                   {pendingAnswer ? <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{pendingAnswer.answer}</Text></div></div> : null}
                   {busy ? <Paper className="showcase-thinking" p="md" radius="md" role="status"><span className="thinking-dots" aria-hidden="true">•••</span> {speaker === "claimant" ? "Skadelidte leter etter et ærlig svar ..." : "Bjarne gransker detaljene og savner kaffe ..."}</Paper> : null}
-                  {latest?.done ? <Paper className="showcase-verdict" p="xl" radius="lg" role="status"><Text className="eyebrow">BJARNES ENDELIGE VURDERING</Text><Title order={3} mt="sm">{latest.status === "possible_rejection" ? "Bjarne fant et mulig problem" : "Sendt til videre utredning"}</Title>{latest.possibleIssue ? <Text mt="md">{latest.possibleIssue}</Text> : null}<Text mt="sm">{latest.reasoningSummary}</Text><Text c="dimmed" size="sm" mt="md">En leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av avtalen og vilkårene.</Text></Paper> : null}
+                  {latest?.done ? <Paper className="showcase-verdict" p="xl" radius="lg" role="status"><Text className="eyebrow">BJARNES FIKTIVE SLUTTRESULTAT</Text><Title order={3} mt="sm">{showcaseVerdict(latest).title}</Title>{latest.status === "possible_rejection" && latest.possibleIssue ? <Text mt="md">{latest.possibleIssue}</Text> : null}<Text mt="sm">{showcaseVerdict(latest).explanation}</Text><Text c="dimmed" size="sm" mt="md">En leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av avtalen og vilkårene.</Text></Paper> : null}
                   <div ref={bottomRef} />
                 </Stack>
                 {error ? <Alert color="red" title="Forestillingen tok en pause" mt="md">{error.message} Samtalen er bevart; prøv samme steg igjen.</Alert> : null}
