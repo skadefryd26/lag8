@@ -85,6 +85,7 @@ button { font: inherit; }
 .welcome-icon { position: absolute; top: 23px; right: 26px; font-size: 2.5rem; transform: rotate(12deg); }
 .composer { margin-top: 16px; padding: 18px; border-radius: 16px; }
 .criticality-picker { margin-bottom: 18px; }
+.phase-hint { padding: 12px 15px; border-left: 3px solid #edbf56; background: rgba(237, 191, 86, .08); line-height: 1.5; }
 .criticality-picker .mantine-SegmentedControl-root { border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; }
 .composer .mantine-Textarea-input { padding: 16px; border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; color: #f6edda; font-size: 1rem; line-height: 1.55; }
 .composer .mantine-Textarea-input:focus { border-color: #edbf56; }
@@ -128,6 +129,16 @@ button { font: inherit; }
 .source-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(237, 191, 86, .15); }
 .clause-quote { color: #cfc8b6; font-family: Georgia, serif; white-space: pre-line; }
 .clause-toggle { color: #edbf56; font-size: .72rem; font-weight: 700; }
+.escalation-actions { margin-top: 16px; }
+.boss-card { border: 2px solid rgba(241, 121, 105, .65); background: #372420; animation: arrive .5s ease-out both; }
+.boss-card h2 { color: #f6edda; font-family: Georgia, serif; font-size: clamp(1.8rem, 5vw, 2.6rem); }
+.boss-card .eyebrow, .boss-avatar { color: #f5a398; }
+.boss-avatar { border-color: #f5a398; }
+.boss-bubble { border: 1px solid rgba(241, 121, 105, .5); background: #372420; }
+.boss-question { color: #f5a398; font-weight: 700; }
+.boss-exchange { display: grid; gap: 15px; }
+.boss-composer { margin-top: 0; border-color: rgba(241, 121, 105, .5); }
+.boss-card .issue-note { border-color: #f5a398; }
 .restart-button { margin-top: 16px; }
 @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse { from { opacity: .35; } to { opacity: 1; } }

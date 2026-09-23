@@ -189,25 +189,27 @@ export function buildMatchQuery(text: string): string {
   return [...terms].slice(0, 40).map((term) => `"${term.replace(/"/g, "")}"*`).join(" OR ");
 }
 
-let vectorCache: { id: string; vector: Float32Array }[] | undefined;
+let vectorCache: { id: string; product: string; vector: Float32Array }[] | undefined;
 
 function allVectors(db: DatabaseSync) {
-  vectorCache ??= (db.prepare("SELECT id, vector FROM vectors").all() as { id: string; vector: Uint8Array }[])
-    .map(({ id, vector }) => ({ id, vector: new Float32Array(vector.buffer.slice(vector.byteOffset, vector.byteOffset + vector.byteLength)) }));
+  vectorCache ??= (db.prepare("SELECT v.id AS id, c.product AS product, v.vector AS vector FROM vectors v JOIN chunks c ON c.id = v.id").all() as { id: string; product: string; vector: Uint8Array }[])
+    .map(({ id, product, vector }) => ({ id, product, vector: new Float32Array(vector.buffer.slice(vector.byteOffset, vector.byteOffset + vector.byteLength)) }));
   return vectorCache;
 }
 
-function keywordIds(db: DatabaseSync, text: string, limit: number): string[] {
+function keywordIds(db: DatabaseSync, text: string, limit: number, product?: string): string[] {
   const query = buildMatchQuery(text);
   if (!query) return [];
-  return (db.prepare("SELECT id FROM chunks WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?").all(query, limit) as { id: string }[])
+  const sql = `SELECT id FROM chunks WHERE chunks MATCH ?${product ? " AND product = ?" : ""} ORDER BY bm25(chunks) LIMIT ?`;
+  return (db.prepare(sql).all(...(product ? [query, product, limit] : [query, limit])) as { id: string }[])
     .map((row) => row.id);
 }
 
-async function vectorIds(db: DatabaseSync, text: string, limit: number): Promise<string[]> {
+async function vectorIds(db: DatabaseSync, text: string, limit: number, product?: string): Promise<string[]> {
   try {
     const query = await embedQuery(text);
     return allVectors(db)
+      .filter((entry) => !product || entry.product === product)
       .map(({ id, vector }) => ({ id, score: similarity(query, vector) }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit)
@@ -223,11 +225,11 @@ async function vectorIds(db: DatabaseSync, text: string, limit: number): Promise
  * Hybridsøk: vektorsøk (betydning) og BM25 (eksakte ord) flettes med Reciprocal Rank Fusion.
  * Et utdrag som havner høyt i begge listene vinner; RRF trenger ingen justering av poengskalaer.
  */
-export async function searchVilkar(text: string, limit = 6): Promise<VilkarHit[]> {
+export async function searchVilkar(text: string, limit = 6, product?: string): Promise<VilkarHit[]> {
   if (!text.trim()) return [];
   const db = await database();
   const pool = Math.max(limit * 3, 20);
-  const [byMeaning, byWords] = await Promise.all([vectorIds(db, text, pool), keywordIds(db, text, pool)]);
+  const [byMeaning, byWords] = await Promise.all([vectorIds(db, text, pool, product), keywordIds(db, text, pool, product)]);
   const rrfK = 60;
   const scores = new Map<string, { score: number; via: Set<"vektor" | "ord"> }>();
   const add = (ids: string[], via: "vektor" | "ord") => ids.forEach((id, rank) => {
