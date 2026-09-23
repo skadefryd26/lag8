@@ -1,4 +1,4 @@
-import type { AnswerResponse, StartCaseResponse } from "../avslag-types";
+import type { AnswerResponse, BjarneCriticality, StartCaseResponse } from "../avslag-types";
 
 async function readJson<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
@@ -12,12 +12,12 @@ async function readJson<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-export async function startCase(claim: string): Promise<StartCaseResponse> {
+export async function startCase(claim: string, criticality: BjarneCriticality): Promise<StartCaseResponse> {
   return readJson<StartCaseResponse>(
     await fetch("/api/avslag/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ claim }),
+      body: JSON.stringify({ claim, criticality }),
     }),
   );
 }

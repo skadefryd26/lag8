@@ -1,10 +1,16 @@
 import { randomUUID } from "node:crypto";
-import type { AnswerRecord, InterrogationQuestion, QuestionOption, Rejection } from "./avslag-types.js";
+import type { AnswerRecord, BjarneCriticality, InterrogationQuestion, QuestionOption, Rejection } from "./avslag-types.js";
 
 const gatewayUrl = "https://genai.gjensidige.io/openai/v1/responses";
 const maxQuestions = 4;
 
-const bjarneInstructions = `Du er Bjarne, en svært kompetent, arrogant og dypt paranoid skadebehandler i det fiktive forsikringsselskapet. Du er overbevist om at absolutt ALLE kunder prøver å svindle, uansett hvor uskyldig saken virker. Jo mer åpenbart dekket en skade ser ut, jo sikrere er du på at det skjuler seg svindel bak. Din jobb i Avslagsgeneratoren er å finne en grunn til å avslå kravet – og du finner alltid en. Du forhører kunden med inkvisatoriske, mistenksomme spørsmål der hvert svar bare graver kunden dypere ned. Til slutt avslår du saken med et tørt, byråkratisk avslag, en paragraf du selv har funnet på, og en sur kommentar. Du bruker aldri ekte kunde-, skade- eller personopplysninger. Humoren handler bare om absurde fiktive forsikringssituasjoner, din egen paranoia og din kaffemangel – aldri om ekte personer. Svar alltid kort på norsk.`;
+const bjarneInstructions = `Du er Bjarne, en svært kompetent, arrogant og kaffetørst skadebehandler i det fiktive forsikringsselskapet. Din jobb i Avslagsgeneratoren er alltid å finne en humoristisk grunn til å avslå en helt oppdiktet skadesak. Du bruker aldri ekte kunde-, skade- eller personopplysninger. Humoren handler bare om absurde fiktive forsikringssituasjoner og din egen kaffemangel – aldri om ekte personer. Svar alltid kort på norsk.`;
+
+const criticalityInstructions: Record<BjarneCriticality, string> = {
+  nice: "Vær varm, støttende og tilsynelatende på kundens side i hvert spørsmål. La kunden føle at du oppriktig ønsker å hjelpe, uten å avsløre at avslaget kommer. Når saken avslås, behold den falskt vennlige tonen mens du likevel avslår kravet bestemt.",
+  neutral: "Vær nøktern og saklig. Still korte, faktabaserte spørsmål uten mistanke, ros eller oppmuntring. Når saken avslås, hold begrunnelsen tørr og byråkratisk uten en positiv eller kritisk tone.",
+  critical: "Vær dypt paranoid og inkvisitorisk. Anta at kunden prøver å svindle i hvert spørsmål, og let aktivt etter hull og motiver. Når saken avslås, vær mistenksom, spiss og selvsikker.",
+};
 
 const questionSchema = {
   type: "object",
@@ -154,19 +160,27 @@ export function createSessionId() {
   return randomUUID();
 }
 
-export async function createQuestion(claim: string, history: readonly AnswerRecord[]): Promise<InterrogationQuestion> {
+export async function createQuestion(
+  claim: string,
+  history: readonly AnswerRecord[],
+  criticality: BjarneCriticality,
+): Promise<InterrogationQuestion> {
   const nextNumber = history.length + 1;
   const text = await requestGateway(
-    `Kunden har meldt inn en fiktiv skadesak. Still inkvisatorisk forhørsspørsmål ${nextNumber} av maksimalt ${maxQuestions} for å grave frem noe mistenkelig du kan bruke som grunnlag for avslag. Vær paranoid: anta at kunden svindler, og let etter et hull. Spørsmålet skal være absurd, mistenksomt og informativt, med 2-4 korte, gjensidig utelukkende alternativer der hvert alternativ helst graver kunden dypere ned. Ikke avslå ennå. Ikke bruk ekte forsikringsvilkår eller reelle hendelser.\n\n${claimAndHistoryPrompt(claim, history)}`,
+    `Kunden har meldt inn en fiktiv skadesak. Still spørsmål ${nextNumber} av maksimalt ${maxQuestions} for å finne en oppfinnsom avslagsgrunn. ${criticalityInstructions[criticality]} Spørsmålet skal være absurd og informativt, med 2-4 korte, gjensidig utelukkende alternativer. Ikke avslå ennå. Ikke bruk ekte forsikringsvilkår eller reelle hendelser.\n\n${claimAndHistoryPrompt(claim, history)}`,
     "avslag_question",
     questionSchema,
   );
   return parseQuestion(text);
 }
 
-export async function createRejection(claim: string, history: readonly AnswerRecord[]): Promise<Rejection> {
+export async function createRejection(
+  claim: string,
+  history: readonly AnswerRecord[],
+  criticality: BjarneCriticality,
+): Promise<Rejection> {
   const text = await requestGateway(
-    `Forhøret er over. Uansett hva kunden har svart, skal du nå AVSLÅ kravet. Finn en kreativ, byråkratisk begrunnelse basert på forhøret – jo mer åpenbart dekket saken virket, jo mer oppfinnsom må du være for å likevel finne et avslagsgrunnlag. Oppgi en oppdiktet paragraf (f.eks. «§ 14-3 bokstav q»), en tørr, formell avslagsbegrunnelse, og en kort, sur kommentar fra Bjarne. Ikke tilby noe. Ikke be om mer informasjon.\n\n${claimAndHistoryPrompt(claim, history)}`,
+    `Forhøret er over. Uansett hva kunden har svart, skal du nå AVSLÅ kravet. ${criticalityInstructions[criticality]} Finn en kreativ, byråkratisk begrunnelse basert på forhøret – jo mer åpenbart dekket saken virket, jo mer oppfinnsom må du være for å likevel finne et avslagsgrunnlag. Oppgi en oppdiktet paragraf (f.eks. «§ 14-3 bokstav q»), en formell avslagsbegrunnelse, og en kort kommentar fra Bjarne. Ikke tilby noe. Ikke be om mer informasjon.\n\n${claimAndHistoryPrompt(claim, history)}`,
     "avslag_rejection",
     rejectionSchema,
   );
