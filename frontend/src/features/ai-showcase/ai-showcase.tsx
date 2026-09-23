@@ -2,13 +2,16 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import type { BjarneCriticality, Investigation, Turn } from "../avslagsgenerator/investigation-api";
-import { answerAsClaimant, askBjarne, getShowcaseCases, type ShowcaseCase } from "./showcase-api";
+import type { BjarneCriticality, BossQuestion, BossReview, InnboHandoff, Investigation, Turn } from "../avslagsgenerator/investigation-api";
+import { BjarneTwists, ClauseSources } from "../avslagsgenerator/clause-cards";
+import { answerAsClaimant, askBjarne, askBoss, getBossReview, getShowcaseCases, transferToInnbo, type ShowcaseCase } from "./showcase-api";
 import { showcaseVerdict } from "./showcase-verdict";
 import "./ai-showcase.css";
 
 type Exchange = { id: string; answer: string; response: Investigation };
 type PendingAnswer = { question: string; answer: string };
+const claimQuestions = 2;
+const minimumAnswers = 8;
 
 export function AiShowcase() {
   const cases = useQuery({ queryKey: ["ai-showcase-cases"], queryFn: getShowcaseCases });
@@ -22,7 +25,12 @@ export function AiShowcase() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingAnswer, setPendingAnswer] = useState<PendingAnswer | null>(null);
-  const [speaker, setSpeaker] = useState<"claimant" | "bjarne" | null>(null);
+  const [bossQuestion, setBossQuestion] = useState<BossQuestion | null>(null);
+  const [bossContext, setBossContext] = useState<{ history: Turn[]; assessment: Investigation } | null>(null);
+  const [bossAnswer, setBossAnswer] = useState<string | null>(null);
+  const [bossReview, setBossReview] = useState<BossReview | null>(null);
+  const [handoff, setHandoff] = useState<InnboHandoff | null>(null);
+  const [speaker, setSpeaker] = useState<"claimant" | "bjarne" | "boss" | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const selectedCase = cases.data?.find((item) => item.id === selectedId) ?? cases.data?.[0];
 
@@ -49,23 +57,66 @@ export function AiShowcase() {
       setLatest(response);
       setPendingAnswer(null);
       setSpeaker(null);
-      if (response.done) setPlaying(false);
+      if (response.done && response.status !== "referred") setPlaying(false);
     },
     onError: () => { setPlaying(false); setSpeaker(null); },
   });
 
+  const bossOpening = useMutation({
+    mutationFn: ({ scenario, history, assessment }: { scenario: ShowcaseCase; history: Turn[]; assessment: Investigation }) => {
+      setSpeaker("boss");
+      return askBoss({ claim: scenario.claim, turns: history, bjarne: assessment });
+    },
+    onSuccess: (question, { history, assessment }) => { setBossContext({ history, assessment }); setBossQuestion(question); setSpeaker(null); },
+    onError: () => { setPlaying(false); setSpeaker(null); },
+  });
+
+  const bossTurn = useMutation({
+    mutationFn: async ({ scenario, history, assessment, question, savedAnswer }: {
+      scenario: ShowcaseCase; history: Turn[]; assessment: Investigation; question: BossQuestion; savedAnswer: string | null;
+    }) => {
+      setSpeaker(savedAnswer ? "boss" : "claimant");
+      const answer = savedAnswer ?? await answerAsClaimant(scenario.id, question.question, history, true);
+      setBossAnswer(answer);
+      setSpeaker("boss");
+      return getBossReview({ claim: scenario.claim, turns: history, bjarne: assessment }, question.question, answer);
+    },
+    onSuccess: (review) => { setBossReview(review); setSpeaker(null); setPlaying(false); },
+    onError: () => { setPlaying(false); setSpeaker(null); },
+  });
+
+  const handoffTurn = useMutation({ mutationFn: transferToInnbo, onSuccess: setHandoff, onError: () => setPlaying(false) });
+  const needsBoss = Boolean(latest?.done && latest.status === "referred" && !bossReview);
+  const complete = Boolean(latest?.done && (!needsBoss || bossReview));
+  const busy = opening.isPending || nextTurn.isPending || bossOpening.isPending || bossTurn.isPending || handoffTurn.isPending;
+  const error = opening.error ?? nextTurn.error ?? bossOpening.error ?? bossTurn.error ?? handoffTurn.error;
+
+  function advance() {
+    if (!activeCase || !latest || busy) return;
+    if (latest.done && needsBoss && bossQuestion && !bossReview && bossContext) {
+      bossTurn.reset();
+      bossTurn.mutate({ scenario: activeCase, history: bossContext.history, assessment: bossContext.assessment, question: bossQuestion, savedAnswer: bossAnswer });
+    } else if (!latest.done) {
+      nextTurn.reset();
+      nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
+    } else if (needsBoss && !bossQuestion) {
+      bossOpening.reset();
+      bossOpening.mutate({ scenario: activeCase, history: turns, assessment: latest });
+    }
+  }
+
   // One timer per completed exchange gives the audience time to read and is cancelled on pause/unmount.
   useEffect(() => {
-    if (!playing || !activeCase || !latest || latest.done || opening.isPending || nextTurn.isPending || nextTurn.isError) return;
+    if (!playing || !activeCase || !latest || complete || busy || error) return;
     const timer = window.setTimeout(() => {
-      nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
+      advance();
     }, 2400);
     return () => window.clearTimeout(timer);
-  }, [playing, activeCase, activeCriticality, latest, turns, pendingAnswer, opening.isPending, nextTurn.isPending, nextTurn.isError, nextTurn.mutate]);
+  }, [playing, activeCase, activeCriticality, latest, turns, pendingAnswer, bossQuestion, bossAnswer, bossReview, handoff, busy, error]);
 
   useEffect(() => {
     if (activeCase) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [activeCase, exchanges, pendingAnswer, latest]);
+  }, [activeCase, exchanges, pendingAnswer, latest, bossQuestion, bossAnswer, bossReview]);
 
   function resetStage() {
     setPlaying(false);
@@ -76,8 +127,16 @@ export function AiShowcase() {
     setExchanges([]);
     setPendingAnswer(null);
     setSpeaker(null);
+    setBossQuestion(null);
+    setBossContext(null);
+    setBossAnswer(null);
+    setBossReview(null);
+    setHandoff(null);
     opening.reset();
     nextTurn.reset();
+    bossOpening.reset();
+    bossTurn.reset();
+    handoffTurn.reset();
   }
 
   function start(autoplay: boolean) {
@@ -88,12 +147,6 @@ export function AiShowcase() {
     setActiveCriticality(tone);
     setPlaying(autoplay);
     opening.mutate({ scenario: selectedCase, tone });
-  }
-
-  function advance() {
-    if (!activeCase || !latest || latest.done || nextTurn.isPending) return;
-    nextTurn.reset();
-    nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
   }
 
   function onCaseKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
@@ -115,9 +168,9 @@ export function AiShowcase() {
     });
   }
 
-  const busy = opening.isPending || nextTurn.isPending;
-  const error = opening.error ?? nextTurn.error;
   const turnsUsed = turns.length + (pendingAnswer ? 1 : 0);
+  const citedClauses = [...new Map([openingResult, ...exchanges.map(({ response }) => response)]
+    .flatMap((result) => result?.clauses ?? []).reverse().map((clause) => [clause.id, clause])).values()];
 
   return (
     <main className="showcase-shell">
@@ -131,7 +184,7 @@ export function AiShowcase() {
           <Badge color="yellow" variant="light" size="lg">TO AI-ER · ÉN HELT OPPDIKTET SKADE</Badge>
           <Title order={1}>AI <span>mot</span> AI<span>.</span></Title>
           <Text className="showcase-lead">En AI spiller skadelidt. Bjarne leter etter en grunn til å si nei.</Text>
-          <Text c="dimmed">Følg samtalen direkte: Begge får bare vite det rollen deres vet. Publikum får se hva som faktisk blir opplyst, hva som fortsatt er uklart, og hvorfor Bjarne lander der han lander.</Text>
+          <Text c="dimmed">Følg to skadespørsmål, seks absurde bakgrunnsspørsmål og eventuelt sjefens ekstra kontroll. Publikum ser hvilke fakta Bjarne bruker, hvilke vilkår han viser til og hvorfor han lander der han lander.</Text>
         </section>
 
         {!activeCase ? (
@@ -159,7 +212,7 @@ export function AiShowcase() {
                   onClick={() => setSelectedId(scenario.id)}
                   onKeyDown={(event) => onCaseKeyDown(event, index)}
                 >
-                  <span className="eyebrow">{scenario.category}</span>
+                  <span className="eyebrow">{scenario.category} · {scenario.policyId === "innboPluss" ? "Innbo Pluss" : "Reise Pluss"}</span>
                   <strong>{scenario.title}</strong>
                   <span>{scenario.claim}</span>
                 </button>
@@ -172,7 +225,7 @@ export function AiShowcase() {
                 <Button color="yellow" disabled={!selectedCase} loading={opening.isPending} onClick={() => start(true)}>▶ Start forestillingen</Button>
                 <Button variant="outline" color="yellow" disabled={!selectedCase} onClick={() => start(false)}>Ta ett steg av gangen</Button>
               </Group>
-              <Text c="dimmed" size="sm" mt="md">Alle saker og personer er oppdiktet. Dette er ikke en ekte dekningsvurdering.</Text>
+              <Text c="dimmed" size="sm" mt="md">Bjarne bruker offentlige alminnelige vilkår for valgt produkt, aldri en individuell avtale. Alle saker og personer er oppdiktet.</Text>
             </Paper>
           </section>
         ) : (
@@ -183,33 +236,41 @@ export function AiShowcase() {
             </Group>
             <div className="showcase-grid">
               <div>
-                <div className="showcase-roster" aria-label="Roller"><span>◉ SKADELIDT <small>AI · kjenner saksfakta</small></span><span>VS</span><span>◉ BJARNE <small>AI · undersøker saken</small></span></div>
+                <div className="showcase-roster" aria-label="Roller"><span>◉ SKADELIDT <small>AI · kjenner saksfakta</small></span><span>VS</span><span>◉ BJARNE <small>AI · {activeCase.policyId === "innboPluss" ? "Innbo Pluss" : "Reise Pluss"}</small></span><span>↗ SJEFEN <small>AI · ved videre utredning</small></span></div>
                 <Stack className="showcase-transcript" gap="lg" aria-live="polite">
                   <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{activeCase.claim}</Text></div></div>
-                  {openingResult ? <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{openingResult.done ? showcaseVerdict(openingResult).message : openingResult.message}</Text>{!openingResult.done ? <Text className="bjarne-question" mt="sm">{openingResult.nextQuestion}</Text> : null}</div></div> : null}
-                  {exchanges.map(({ id, answer, response }) => (
+                  {openingResult ? <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI · SKADEFORHØR</Text><Text className="bjarne-message">{openingResult.done ? showcaseVerdict(openingResult).message : openingResult.message}</Text><BjarneTwists clauses={openingResult.clauses ?? []} />{!openingResult.done ? <Text className="bjarne-question" mt="sm">{openingResult.nextQuestion}</Text> : null}</div></div> : null}
+                  {exchanges.map(({ id, answer, response }, index) => (
                     <div className="showcase-exchange" key={id}>
                       <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{answer}</Text></div></div>
-                      <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{response.done ? showcaseVerdict(response).message : response.message}</Text>{!response.done ? <Text className="bjarne-question" mt="sm">{response.nextQuestion}</Text> : null}</div></div>
+                      <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI · {index + 1 < claimQuestions ? "SKADEFORHØR" : "BAKGRUNNSFORHØR"}</Text><Text className="bjarne-message">{response.done ? showcaseVerdict(response).message : response.message}</Text><BjarneTwists clauses={response.clauses ?? []} />{!response.done ? <Text className="bjarne-question" mt="sm">{response.nextQuestion}</Text> : null}</div></div>
                     </div>
                   ))}
                   {pendingAnswer ? <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{pendingAnswer.answer}</Text></div></div> : null}
-                  {busy ? <Paper className="showcase-thinking" p="md" radius="md" role="status"><span className="thinking-dots" aria-hidden="true">•••</span> {speaker === "claimant" ? "Skadelidte leter etter et ærlig svar ..." : "Bjarne gransker detaljene og savner kaffe ..."}</Paper> : null}
-                  {latest?.done ? <Paper className="showcase-verdict" p="xl" radius="lg" role="status"><Text className="eyebrow">BJARNES FIKTIVE SLUTTRESULTAT</Text><Title order={3} mt="sm">{showcaseVerdict(latest).title}</Title>{latest.status === "possible_rejection" && latest.possibleIssue ? <Text mt="md">{latest.possibleIssue}</Text> : null}<Text mt="sm">{showcaseVerdict(latest).explanation}</Text><Text c="dimmed" size="sm" mt="md">En leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av avtalen og vilkårene.</Text></Paper> : null}
+                  {latest?.done ? <Paper className="showcase-verdict" p="xl" radius="lg" role="status"><Text className="eyebrow">BJARNES FIKTIVE SLUTTRESULTAT</Text><Title order={3} mt="sm">{showcaseVerdict(latest).title}</Title>{latest.status === "possible_rejection" && latest.possibleIssue ? <Text mt="md">{latest.possibleIssue}</Text> : null}{latest.status === "referred" ? <Text mt="md" className="issue-note">Mottaker: {latest.thirdParty} (oppdiktet)</Text> : null}<Text mt="sm">{showcaseVerdict(latest).explanation}</Text>{latest.source && latest.status === "possible_rejection" ? <Text size="sm" mt="sm">Kilde: <a href={latest.source.url} target="_blank" rel="noreferrer">{latest.source.product}, {latest.source.section}, PDF-side {latest.source.page}</a>. {latest.source.excerpt}</Text> : null}<Text c="dimmed" size="sm" mt="md">Offentlige alminnelige vilkår er bare et oppslag. Dette er en lek, ikke en dekningsavgjørelse; den individuelle avtalen gjelder.</Text></Paper> : null}
+                  {bossQuestion ? <div className="message-row"><div className="avatar boss-avatar" aria-hidden="true">S</div><div className="message-bubble boss-bubble"><Text className="bubble-label">SJEFEN · EKSTRA KONTROLL</Text><Text>{bossQuestion.message}</Text><Text className="boss-question" mt="sm">{bossQuestion.question}</Text></div></div> : null}
+                  {bossAnswer ? <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · TIL SJEFEN</Text><Text>{bossAnswer}</Text></div></div> : null}
+                  {bossReview ? <Paper className="boss-card" p="xl" radius="lg" role="status"><Text className="eyebrow">ESKALERT · SJEFENS KONTOR</Text><Title order={3} mt="sm">{{ possible_issue: "Sjefen fant en mulig innvending", nothing_found: "Selv sjefen fant ikke noe", needs_information: "Sjefen krever en opplysning til" }[bossReview.conclusion]}</Title><Text mt="md">{bossReview.message}</Text><Text className="issue-note" mt="md">{bossReview.scrutiny}</Text><Text c="dimmed" size="sm" mt="md">Dette er satire, ikke en faktisk dekningsavgjørelse.</Text></Paper> : null}
+                  {handoff ? <Paper className="boss-card" p="xl" radius="lg" role="status"><Text className="eyebrow">OVERLEVERT · INNBO-BJARNE</Text><Title order={3} mt="sm">Innbo-Bjarne svarer</Title><Text mt="md">{handoff.line}</Text><Text size="sm" mt="sm">Han fikk med seg: «{handoff.context}»</Text><Text c="dimmed" size="sm" mt="md">Dette gjelder overleveringen i sketsjen, ikke dekning under Innbo Pluss.</Text></Paper> : null}
+                  {busy ? <Paper className="showcase-thinking" p="md" radius="md" role="status"><span className="thinking-dots" aria-hidden="true">•••</span> {speaker === "claimant" ? "Skadelidte leter etter et ærlig svar ..." : speaker === "boss" ? "Sjefen gjennomgår Bjarnes arbeid med lupe ..." : "Bjarne gransker detaljene og savner kaffe ..."}</Paper> : null}
                   <div ref={bottomRef} />
                 </Stack>
                 {error ? <Alert color="red" title="Forestillingen tok en pause" mt="md">{error.message} Samtalen er bevart; prøv samme steg igjen.</Alert> : null}
                 <Group mt="lg" gap="sm">
                   {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate({ scenario: activeCase, tone: activeCriticality }); }}>Prøv å starte igjen ↻</Button> : null}
-                  {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
-                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => { if (!playing && nextTurn.isError) nextTurn.reset(); setPlaying(!playing); }} disabled={busy}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
-                  {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
+                  {!complete && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : needsBoss ? bossQuestion ? "La skadelidte svare sjefen →" : "Be om sjefen →" : "Neste replikk →"}</Button> : null}
+                  {latest && !latest.done && !bossQuestion && !bossReview ? <Button variant="outline" color="red" disabled={busy} onClick={() => { setPlaying(false); bossOpening.reset(); bossOpening.mutate({ scenario: activeCase, history: turns, assessment: latest }); }}>Be om sjefen →</Button> : null}
+                  {bossQuestion && !bossReview && !latest?.done && !playing ? <Button variant="outline" color="red" disabled={busy} onClick={() => { if (activeCase && bossContext) { bossTurn.reset(); bossTurn.mutate({ scenario: activeCase, history: bossContext.history, assessment: bossContext.assessment, question: bossQuestion, savedAnswer: bossAnswer }); } }}>La skadelidte svare sjefen →</Button> : null}
+                  {!complete && latest ? <Button variant="outline" color="yellow" onClick={() => { if (!playing && error) { nextTurn.reset(); bossOpening.reset(); bossTurn.reset(); } setPlaying(!playing); }} disabled={busy}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
+                  {latest?.handoffId && !handoff && !handoffTurn.isPending ? <Button variant="outline" color="yellow" onClick={() => handoffTurn.mutate(latest.handoffId!)}>Send til Innbo-Bjarne →</Button> : null}
+                  {complete ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>
               <aside className="showcase-sidebar">
-                <Paper p="lg" radius="lg"><Text className="eyebrow">RUNDESTATUS</Text><Text className="showcase-big" mt="sm">{Math.min(turnsUsed, activeCase.maxTurns)} <small>/ {activeCase.maxTurns} svar</small></Text><Progress value={Math.min(turnsUsed / activeCase.maxTurns * 100, 100)} color="yellow" mt="sm" /><Text c="dimmed" size="sm" mt="md">{latest?.done ? "Saken er ferdig vurdert." : playing ? "Automatisk avspilling pågår." : "Pauset: Publikum bestemmer tempoet."}</Text></Paper>
+                <Paper p="lg" radius="lg"><Text className="eyebrow">RUNDESTATUS</Text><Text className="showcase-big" mt="sm">{Math.min(turnsUsed, activeCase.maxTurns)} <small>/ {activeCase.maxTurns} svar</small></Text><Progress value={Math.min(turnsUsed / activeCase.maxTurns * 100, 100)} color="yellow" mt="sm" /><Text c="dimmed" size="sm" mt="md">{bossReview ? "Sjefen har avsagt sin fiktive vurdering." : handoff ? "Saken er hos Innbo-Bjarne." : needsBoss ? "Bjarnes sak er hos sjefen." : latest?.done ? "Saken er ferdig vurdert." : turnsUsed >= claimQuestions ? "Bakgrunnsforhør · oppdiktede forbindelser og proveniens." : "Skadeforhør · hendelsen og vilkår."} {playing && !complete ? "Automatisk avspilling pågår." : !complete ? "Pauset: Publikum bestemmer tempoet." : ""}</Text></Paper>
                 <Paper p="lg" radius="lg" mt="md"><Text className="eyebrow">BJARNES HÅP OM AVSLAG</Text><Text className="showcase-big" mt="sm">{latest?.rejectionHope ?? 78}%</Text><Progress value={latest?.rejectionHope ?? 78} color="yellow" mt="sm" /><Text c="dimmed" size="xs" mt="sm">Kun Bjarnes optimisme – aldri sannsynlighet for avslag.</Text></Paper>
                 {latest?.relevantFacts.length ? <Paper p="lg" radius="lg" mt="md"><Text className="eyebrow">FAKTA SOM BLE OPPGITT</Text>{latest.relevantFacts.slice(0, 4).map((fact, index) => <Text size="sm" mt="sm" key={index}>↳ {fact}</Text>)}</Paper> : null}
+                {citedClauses.length ? <Paper p="lg" radius="lg" mt="md"><ClauseSources clauses={citedClauses} /></Paper> : null}
               </aside>
             </div>
           </section>
