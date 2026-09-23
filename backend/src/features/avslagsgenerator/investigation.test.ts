@@ -11,11 +11,12 @@ after(() => {
   else process.env.AI_GATEWAY_TOKEN = originalToken;
 });
 
-function mockAnswer(sourceId: string, status = "possible_rejection") {
+function mockAnswer(sourceId: string, status = "possible_rejection", product: "innboPluss" | "reisePluss" = "innboPluss") {
   globalThis.fetch = async (_url, options) => {
     const request = JSON.parse(String(options?.body)) as { input: string };
-    assert.match(request.input, /innboPluss/);
-    assert.doesNotMatch(request.input, /reise-mobil/);
+    assert.ok(request.input.includes(`Valgt produkt: ${product}`));
+    if (product === "innboPluss") assert.doesNotMatch(request.input, /reise-mobil/);
+    else assert.doesNotMatch(request.input, /innbo-uhell/);
     const answer = {
       message: "*Sukk.* Jeg undersøkte saken.", status, nextQuestion: "", rejectionHope: 43,
       claimSummary: "Fiktiv vannskade", relevantFacts: ["Vann på mobil"],
@@ -43,6 +44,17 @@ test("mulig avslag må ha kilde fra valgt produkt", async () => {
   assert.equal(valid.coverage, "possible_rejection");
   assert.match(valid.source?.url ?? "", /Innbo-Pluss.*#page=4$/);
   assert.equal(valid.escalation, "");
+  assert.equal(valid.handoffId, null);
+});
+
+test("kun en kildebegrunnet Reise Pluss-innvending gir overlevering", async () => {
+  mockAnswer("reise-mobil", "possible_rejection", "reisePluss");
+  const valid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral");
+  assert.equal(valid.status, "possible_rejection");
+  assert.match(valid.handoffId ?? "", /^[0-9a-f-]{36}$/);
+  mockAnswer("innbo-uhell", "possible_rejection", "reisePluss");
+  const invalid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral");
+  assert.equal(invalid.handoffId, null);
 });
 
 test("satirisk eskalering er adskilt fra dekningsgrunnlag", async () => {

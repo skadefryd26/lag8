@@ -1,5 +1,6 @@
 import { requestGateway } from "../../ai/gateway.js";
 import { clausesFor, sourceFor, type PolicyId } from "./vilkar.js";
+import { offerInnboHandoff } from "./handoff.js";
 
 export type Turn = { question: string; answer: string };
 export type Verdict = "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
@@ -17,6 +18,7 @@ export type Investigation = {
   coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
   source: ReturnType<typeof sourceFor>;
   escalation: string;
+  handoffId: string | null;
 };
 
 export const maxAnswers = 6;
@@ -80,13 +82,13 @@ export async function investigate(
   const source = sourceFor(policyId, result.sourceId);
   if (result.status === "possible_rejection" && !source) {
     // A real-looking rejection must never be displayed without a verified source.
-    return { ...result, status: "more_information", message: "*Sukk.* Jeg fant ikke igjen den påståtte avslagsgrunnen i vilkårene.", done: true, nextQuestion: "", coverage: "unclear", source: null,
+    return { ...result, status: "more_information", message: "*Sukk.* Jeg fant ikke igjen den påståtte avslagsgrunnen i vilkårene.", done: true, nextQuestion: "", coverage: "unclear", source: null, handoffId: null,
       possibleIssue: "", escalation: "", reasoningSummary: "Bjarne fant ingen etterprøvbar kilde til avslaget." } as Investigation;
   }
 
   if (result.status === "investigating" && (!result.nextQuestion.trim() || lastTurn)) {
     // Never leave the user stuck in a chat without a question to answer.
-    return { ...result, status: "more_information", done: true, nextQuestion: "", coverage: "unclear", source: null, escalation: "", reasoningSummary: result.reasoningSummary || "Det mangler fortsatt opplysninger for å vurdere saken." } as Investigation;
+    return { ...result, status: "more_information", done: true, nextQuestion: "", coverage: "unclear", source: null, handoffId: null, escalation: "", reasoningSummary: result.reasoningSummary || "Det mangler fortsatt opplysninger for å vurdere saken." } as Investigation;
   }
   if (result.status === "bjarne_lost" && turns.length < 2) {
     throw new Error("Bjarne avsluttet undersøkelsen før han stilte nok spørsmål.");
@@ -96,6 +98,7 @@ export async function investigate(
   }
   const coverage = result.status === "possible_rejection" ? "possible_rejection" : result.status === "bjarne_lost" ? "possibly_covered" : result.status === "investigating" ? "investigating" : "unclear";
   return { ...result, coverage, source: result.status === "possible_rejection" ? source : null,
+    handoffId: policyId === "reisePluss" && coverage === "possible_rejection" ? offerInnboHandoff(claim, turns, result.possibleIssue) : null,
     escalation: result.status === "bjarne_lost" ? result.escalation || "Jeg ville undersøkt kaffevanene dine, men selv koffeinfri kaffe er ingen avslagsgrunn." : "",
     done: result.status !== "investigating", nextQuestion: result.status === "investigating" ? result.nextQuestion : "" } as Investigation;
 }

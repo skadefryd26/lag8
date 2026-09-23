@@ -15,7 +15,24 @@ export type Investigation = {
   coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
   source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
   escalation: string;
+  handoffId: string | null;
 };
+
+export type InnboHandoff = { line: string; context: string };
+
+export async function handoffToInnbo(handoffId: string): Promise<InnboHandoff> {
+  const response = await fetch("/api/avslagsgenerator/handoff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ handoffId }),
+  });
+  const body: unknown = await response.json();
+  if (!response.ok) {
+    throw new Error(body && typeof body === "object" && "error" in body && typeof body.error === "string"
+      ? body.error : "Innbo-Bjarne tok ikke telefonen. Prøv igjen.");
+  }
+  return body as InnboHandoff;
+}
 
 export async function investigate(
   claim: string,
