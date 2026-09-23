@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { requestGateway } from "../../ai/gateway.js";
 
+const maxShowcaseTurns = 6;
+
 const cases = [
   {
     id: "kaffeflom",
@@ -40,7 +42,14 @@ const answerSchema = {
 export const showcaseRouter = Router();
 
 showcaseRouter.get("/cases", (_request, response) => {
-  response.json(cases.map(({ id, title, policyId, category, claim }) => ({ id, title, policyId, category, claim })));
+  response.json(cases.map(({ id, title, policyId, category, claim }) => ({
+    id,
+    title,
+    policyId,
+    category,
+    claim,
+    maxTurns: maxShowcaseTurns,
+  })));
 });
 
 showcaseRouter.post("/answer", async (request, response, next) => {
@@ -49,11 +58,11 @@ showcaseRouter.post("/answer", async (request, response, next) => {
   const validText = (value: unknown, limit: number): value is string =>
     typeof value === "string" && value.trim().length > 0 && value.length <= limit;
 
-  if (!scenario || !validText(question, 500) || !Array.isArray(turns) || turns.length > 5 ||
+  if (!scenario || !validText(question, 500) || !Array.isArray(turns) || turns.length >= maxShowcaseTurns ||
     !turns.every((turn: unknown) => Boolean(turn) && typeof turn === "object" &&
       validText((turn as { question?: unknown }).question, 500) &&
       validText((turn as { answer?: unknown }).answer, 1500))) {
-    response.status(400).json({ error: "Velg en demosak og send ett gyldig spørsmål om gangen." });
+    response.status(400).json({ error: "Velg en demosak og send gyldig spørsmål og samtalehistorikk innen maks antall steg." });
     return;
   }
 

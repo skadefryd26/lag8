@@ -14,6 +14,7 @@ export function AiShowcase() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeCase, setActiveCase] = useState<ShowcaseCase | null>(null);
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
+  const [activeCriticality, setActiveCriticality] = useState<BjarneCriticality>("neutral");
   const [playing, setPlaying] = useState(false);
   const [openingResult, setOpeningResult] = useState<Investigation | null>(null);
   const [latest, setLatest] = useState<Investigation | null>(null);
@@ -25,20 +26,20 @@ export function AiShowcase() {
   const selectedCase = cases.data?.find((item) => item.id === selectedId) ?? cases.data?.[0];
 
   const opening = useMutation({
-    mutationFn: (scenario: ShowcaseCase) => askBjarne(scenario, [], criticality),
+    mutationFn: ({ scenario, tone }: { scenario: ShowcaseCase; tone: BjarneCriticality }) => askBjarne(scenario, [], tone),
     onSuccess: (result) => { setOpeningResult(result); setLatest(result); if (result.done) setPlaying(false); },
   });
 
   const nextTurn = useMutation({
-    mutationFn: async ({ scenario, question, history, savedAnswer }: {
-      scenario: ShowcaseCase; question: string; history: Turn[]; savedAnswer: PendingAnswer | null;
+    mutationFn: async ({ scenario, question, history, savedAnswer, tone }: {
+      scenario: ShowcaseCase; question: string; history: Turn[]; savedAnswer: PendingAnswer | null; tone: BjarneCriticality;
     }) => {
       setSpeaker(savedAnswer ? "bjarne" : "claimant");
       const answer = savedAnswer?.answer ?? await answerAsClaimant(scenario.id, question, history);
       setPendingAnswer({ question, answer });
       setSpeaker("bjarne");
       const updated = [...history, { question, answer }];
-      const response = await askBjarne(scenario, updated, criticality);
+      const response = await askBjarne(scenario, updated, tone);
       return { answer, updated, response };
     },
     onSuccess: ({ answer, updated, response }) => {
@@ -56,10 +57,10 @@ export function AiShowcase() {
   useEffect(() => {
     if (!playing || !activeCase || !latest || latest.done || opening.isPending || nextTurn.isPending || nextTurn.isError) return;
     const timer = window.setTimeout(() => {
-      nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer });
+      nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
     }, 2400);
     return () => window.clearTimeout(timer);
-  }, [playing, activeCase, latest, turns, pendingAnswer, opening.isPending, nextTurn.isPending, nextTurn.isError, nextTurn.mutate]);
+  }, [playing, activeCase, activeCriticality, latest, turns, pendingAnswer, opening.isPending, nextTurn.isPending, nextTurn.isError, nextTurn.mutate]);
 
   useEffect(() => {
     if (activeCase) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -80,16 +81,18 @@ export function AiShowcase() {
 
   function start(autoplay: boolean) {
     if (!selectedCase) return;
+    const tone = criticality;
     resetStage();
     setActiveCase(selectedCase);
+    setActiveCriticality(tone);
     setPlaying(autoplay);
-    opening.mutate(selectedCase);
+    opening.mutate({ scenario: selectedCase, tone });
   }
 
   function advance() {
     if (!activeCase || !latest || latest.done || nextTurn.isPending) return;
     nextTurn.reset();
-    nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer });
+    nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
   }
 
   const busy = opening.isPending || nextTurn.isPending;
@@ -116,9 +119,17 @@ export function AiShowcase() {
             <Text className="eyebrow">01 / VELG EN SAK</Text>
             {cases.isError ? <Alert color="red" mt="md">{cases.error.message} <Button variant="subtle" onClick={() => cases.refetch()}>Prøv igjen</Button></Alert> : null}
             {cases.isPending ? <Text mt="md">Bjarne finner fram saksmapper ...</Text> : null}
-            <div className="showcase-cases">
+            <div className="showcase-cases" role="radiogroup" aria-label="Velg demosak">
               {cases.data?.map((scenario) => (
-                <button key={scenario.id} type="button" className={`showcase-case ${selectedCase?.id === scenario.id ? "selected" : ""}`} onClick={() => setSelectedId(scenario.id)} aria-pressed={selectedCase?.id === scenario.id}>
+                <button
+                  key={scenario.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedCase?.id === scenario.id}
+                  tabIndex={selectedCase?.id === scenario.id || (!selectedId && selectedCase?.id === scenario.id) ? 0 : -1}
+                  className={`showcase-case ${selectedCase?.id === scenario.id ? "selected" : ""}`}
+                  onClick={() => setSelectedId(scenario.id)}
+                >
                   <span className="eyebrow">{scenario.category}</span>
                   <strong>{scenario.title}</strong>
                   <span>{scenario.claim}</span>
@@ -160,14 +171,14 @@ export function AiShowcase() {
                 </Stack>
                 {error ? <Alert color="red" title="Forestillingen tok en pause" mt="md">{error.message} Samtalen er bevart; prøv samme steg igjen.</Alert> : null}
                 <Group mt="lg" gap="sm">
-                  {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate(activeCase); }}>Prøv å starte igjen ↻</Button> : null}
+                  {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate({ scenario: activeCase, tone: activeCriticality }); }}>Prøv å starte igjen ↻</Button> : null}
                   {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
                   {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => { nextTurn.reset(); setPlaying(!playing); }} disabled={Boolean(error && !nextTurn.isError)}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
                   {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>
               <aside className="showcase-sidebar">
-                <Paper p="lg" radius="lg"><Text className="eyebrow">RUNDESTATUS</Text><Text className="showcase-big" mt="sm">{Math.min(turnsUsed, 6)} <small>/ 6 svar</small></Text><Progress value={Math.min(turnsUsed / 6 * 100, 100)} color="yellow" mt="sm" /><Text c="dimmed" size="sm" mt="md">{latest?.done ? "Saken er ferdig vurdert." : playing ? "Automatisk avspilling pågår." : "Pauset: Publikum bestemmer tempoet."}</Text></Paper>
+                <Paper p="lg" radius="lg"><Text className="eyebrow">RUNDESTATUS</Text><Text className="showcase-big" mt="sm">{Math.min(turnsUsed, activeCase.maxTurns)} <small>/ {activeCase.maxTurns} svar</small></Text><Progress value={Math.min(turnsUsed / activeCase.maxTurns * 100, 100)} color="yellow" mt="sm" /><Text c="dimmed" size="sm" mt="md">{latest?.done ? "Saken er ferdig vurdert." : playing ? "Automatisk avspilling pågår." : "Pauset: Publikum bestemmer tempoet."}</Text></Paper>
                 <Paper p="lg" radius="lg" mt="md"><Text className="eyebrow">BJARNES HÅP OM AVSLAG</Text><Text className="showcase-big" mt="sm">{latest?.rejectionHope ?? 78}%</Text><Progress value={latest?.rejectionHope ?? 78} color="yellow" mt="sm" /><Text c="dimmed" size="xs" mt="sm">Kun Bjarnes optimisme – aldri sannsynlighet for avslag.</Text></Paper>
                 {latest?.relevantFacts.length ? <Paper p="lg" radius="lg" mt="md"><Text className="eyebrow">FAKTA SOM BLE OPPGITT</Text>{latest.relevantFacts.slice(0, 4).map((fact, index) => <Text size="sm" mt="sm" key={index}>↳ {fact}</Text>)}</Paper> : null}
               </aside>

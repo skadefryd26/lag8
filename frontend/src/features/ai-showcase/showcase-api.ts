@@ -1,6 +1,6 @@
 import { investigate, type BjarneCriticality, type Investigation, type PolicyId, type Turn } from "../avslagsgenerator/investigation-api";
 
-export type ShowcaseCase = { id: string; title: string; policyId: PolicyId; category: string; claim: string };
+export type ShowcaseCase = { id: string; title: string; policyId: PolicyId; category: string; claim: string; maxTurns: number };
 
 async function readResponse<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
