@@ -84,6 +84,8 @@ button { font: inherit; }
 .welcome-card .mantine-Text-root { max-width: 47ch; line-height: 1.6; }
 .welcome-icon { position: absolute; top: 23px; right: 26px; font-size: 2.5rem; transform: rotate(12deg); }
 .composer { margin-top: 16px; padding: 18px; border-radius: 16px; }
+.criticality-picker { margin-bottom: 18px; }
+.criticality-picker .mantine-SegmentedControl-root { border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; }
 .composer .mantine-Textarea-input { padding: 16px; border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; color: #f6edda; font-size: 1rem; line-height: 1.55; }
 .composer .mantine-Textarea-input:focus { border-color: #edbf56; }
 .composer .mantine-Button-root, .restart-button { color: #211b0c; font-weight: 800; }
