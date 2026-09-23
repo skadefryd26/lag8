@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { investigate, type BjarneCriticality, type Investigation, type Turn } from "./investigation-api";
+import { BjarneTwists, ClauseSources } from "./clause-cards";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
 const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
@@ -28,7 +29,7 @@ function VerdictCard({ result }: { result: Investigation }) {
       <Text className="reveal-message" mt="md">{result.message}</Text>
       {issue && result.possibleIssue ? <Text className="issue-note" mt="md">{result.possibleIssue}</Text> : null}
       <Text mt="md">{result.reasoningSummary}</Text>
-      <Text c="dimmed" size="sm" mt="lg">Dette er en leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av forsikringen og vilkårene dine.</Text>
+      <Text c="dimmed" size="sm" mt="lg">Dette er en leken vurdering, ikke en dekningsavgjørelse. Bjarne leser fra Gjensidiges alminnelige vilkår og vrir bevisst på ordene – faktisk dekning avhenger av din avtale og vilkårene slik de faktisk står.</Text>
     </Paper>
   );
 }
@@ -46,6 +47,8 @@ export function Avslagsgenerator() {
       investigate(text, history, criticality),
   });
   const latest = exchanges.at(-1)?.response;
+  // Alle paragrafer Bjarne har brukt i saken, nyeste først, uten duplikater.
+  const citedClauses = [...new Map(exchanges.flatMap((exchange) => exchange.response.clauses ?? []).reverse().map((clause) => [clause.id, clause])).values()];
   const started = claim.length > 0;
 
   useEffect(() => {
@@ -128,7 +131,8 @@ export function Avslagsgenerator() {
                       <div className="avatar" aria-hidden="true">B</div>
                       <div className="message-bubble bjarne-bubble">
                         <Text className="bubble-label">BJARNE · SAKSBEHANDLER</Text>
-                        <Text>{exchange.response.message}</Text>
+                        <Text className="bjarne-message">{exchange.response.message}</Text>
+                        <BjarneTwists clauses={exchange.response.clauses ?? []} />
                         {!exchange.response.done ? <Text className="bjarne-question" mt="sm">{exchange.response.nextQuestion}</Text> : null}
                       </div>
                     </div>
@@ -205,6 +209,7 @@ export function Avslagsgenerator() {
               <Text c="dimmed" size="sm" mt="xs">{latest?.done ? "Se konklusjonen i samtalen." : started ? "Han har fortsatt noen paragrafer igjen å snu." : "Beskriv en oppdiktet hendelse for å begynne."}</Text>
               {latest?.relevantFacts.length ? <div className="fact-list"><Text className="eyebrow">DET VI VET</Text>{latest.relevantFacts.slice(0, 4).map((fact, index) => <Text size="sm" key={index}>↳ {fact}</Text>)}</div> : null}
             </Paper>
+            {citedClauses.length ? <Paper className="case-status" p="lg" radius="lg" mt="md"><ClauseSources clauses={citedClauses} /></Paper> : null}
             <Text className="privacy-note">Bruk gjerne oppdiktede eksempler. Ikke del ekte personopplysninger.</Text>
           </aside>
         </div>

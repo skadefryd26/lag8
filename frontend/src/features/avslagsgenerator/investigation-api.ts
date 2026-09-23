@@ -1,6 +1,8 @@
 export type Turn = { question: string; answer: string };
 export type BjarneCriticality = "nice" | "neutral" | "critical";
 
+export type CitedClause = { id: string; product: string; page: number; text: string; bjarneTwist: string };
+
 export type Investigation = {
   message: string;
   status: "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
@@ -11,6 +13,7 @@ export type Investigation = {
   possibleIssue: string;
   reasoningSummary: string;
   done: boolean;
+  clauses: CitedClause[];
 };
 
 export async function investigate(
