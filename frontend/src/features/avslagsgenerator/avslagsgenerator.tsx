@@ -2,10 +2,14 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { investigate, type BjarneCriticality, type Investigation, type Turn } from "./investigation-api";
+import { investigate, type BjarneCriticality, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
 const claimQuestions = 5;
+const policyOptions: { label: string; value: PolicyId }[] = [
+  { label: "Reise Pluss", value: "reisePluss" },
+  { label: "Innbo Pluss", value: "innboPluss" },
+];
 const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
   { value: "nice", label: "Snill" },
   { value: "neutral", label: "Nøytral" },
@@ -29,7 +33,10 @@ function VerdictCard({ result }: { result: Investigation }) {
       <Text className="reveal-message" mt="md">{result.message}</Text>
       {issue && result.possibleIssue ? <Text className="issue-note" mt="md">{result.possibleIssue}</Text> : null}
       <Text mt="md">{result.reasoningSummary}</Text>
-      <Text c="dimmed" size="sm" mt="lg">Dette er en leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av forsikringen og vilkårene dine.</Text>
+      <Text fw={700} mt="lg">{result.coverage === "possible_rejection" ? "Mulig grunnlag mot dekning" : result.coverage === "possibly_covered" ? "Ingen relevant avslagsgrunn funnet" : "Dekning uavklart"}</Text>
+      {result.source ? <Text size="sm" mt="sm">Kilde: <a href={result.source.url} target="_blank" rel="noreferrer">{result.source.product}, {result.source.section}, PDF-side {result.source.page}</a>. {result.source.excerpt}</Text> : null}
+      {result.escalation ? <Text c="dimmed" size="sm" mt="lg">Bjarnes rent fiktive nødeskalering: {result.escalation}</Text> : null}
+      <Text c="dimmed" size="sm" mt="lg">Offentlige alminnelige vilkår er bare et oppslag. Dette er en leken vurdering, ikke en dekningsavgjørelse; den individuelle avtalen gjelder.</Text>
     </Paper>
   );
 }
@@ -37,14 +44,15 @@ function VerdictCard({ result }: { result: Investigation }) {
 export function Avslagsgenerator() {
   const [claim, setClaim] = useState("");
   const [draft, setDraft] = useState("");
+  const [policyId, setPolicyId] = useState<PolicyId>("innboPluss");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingText, setPendingText] = useState("");
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: ({ text, history, criticality, forceVerdict }: { text: string; history: Turn[]; criticality: BjarneCriticality; forceVerdict?: boolean }) =>
-      investigate(text, history, criticality, forceVerdict),
+    mutationFn: ({ text, history, policy, tone, forceVerdict }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality; forceVerdict?: boolean }) =>
+      investigate(text, history, policy, tone, forceVerdict),
   });
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
@@ -62,7 +70,7 @@ export function Avslagsgenerator() {
     const history = started && latest ? [...turns, { question: latest.nextQuestion, answer: text }] : [];
     setPendingText(text);
     try {
-      const result = await mutation.mutateAsync({ text: started ? claim : text, history, criticality });
+      const result = await mutation.mutateAsync({ text: started ? claim : text, history, policy: policyId, tone: criticality });
       if (!started) setClaim(text);
       setTurns(history);
       setExchanges((previous) => [...previous, { answer: text, response: result }]);
@@ -77,7 +85,7 @@ export function Avslagsgenerator() {
   async function demandVerdict() {
     if (!personalPhase || mutation.isPending) return;
     try {
-      const result = await mutation.mutateAsync({ text: claim, history: turns, criticality, forceVerdict: true });
+      const result = await mutation.mutateAsync({ text: claim, history: turns, policy: policyId, tone: criticality, forceVerdict: true });
       setExchanges((previous) => [...previous, { answer: "Jeg krever en dom nå.", response: result }]);
       setDraft("");
     } catch {
@@ -130,6 +138,7 @@ export function Avslagsgenerator() {
 
         <div className="generator-grid">
           <section className="conversation-column" aria-label="Samtale med Bjarne">
+            {!started && !pendingText ? <Paper p="md" radius="lg" mb="md"><Text fw={700} mb="xs">Hvilket vilkår skal Bjarne slå opp i?</Text><SegmentedControl fullWidth data={policyOptions} value={policyId} onChange={(value) => setPolicyId(value as PolicyId)} aria-label="Velg forsikringsprodukt" /><Text c="dimmed" size="xs" mt="xs">Offentlige alminnelige vilkår, ikke en individuell avtale.</Text></Paper> : <Text c="dimmed" size="sm" mb="sm">Oppslag: {policyOptions.find((option) => option.value === policyId)?.label}</Text>}
             {started || pendingText ? (
               <Stack gap="lg" className="conversation-log" aria-live="polite">
                 {exchanges.map((exchange, index) => (
