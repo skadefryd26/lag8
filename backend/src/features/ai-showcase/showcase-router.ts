@@ -5,6 +5,7 @@ const cases = [
   {
     id: "kaffeflom",
     title: "Kaffeflommen",
+    policyId: "innboPluss",
     category: "Innbo · plutselig skade",
     claim: "Jeg sølte kaffe over laptopen min under et digitalt møte. Den startet aldri igjen. Kaffekoppen er uskadd, takk som spør.",
     facts: "Laptopen var hennes private eiendel. Hun veltet koppen ved et uhell da hun reiste seg for å hente laderen. Kaffen traff tastaturet med én gang. Hun tørket av maskinen og slo den av. Hun kjenner ikke vilkårene i innboforsikringen, og har ingen dokumentasjon på reparasjonskostnad.",
@@ -12,6 +13,7 @@ const cases = [
   {
     id: "sykkel",
     title: "Den optimistiske sykkellåsen",
+    policyId: "innboPluss",
     category: "Tyveri · sikring",
     claim: "Sykkelen min ble stjålet utenfor kontoret. Jeg mener den var godt sikret, i hvert fall på et følelsesmessig plan.",
     facts: "Sykkelen sto utenfor kontoret i to timer på dagtid. Hun hadde låst forhjulet med en enkel vaierlås, men ikke festet sykkelen til et fast punkt. Sykkelen er borte, og hun har ikke sett noen ta den. Hun vet ikke hvilke sikringskrav som står i forsikringsavtalen.",
@@ -19,6 +21,7 @@ const cases = [
   {
     id: "tidsmaskin",
     title: "Koffert på feil tidslinje",
+    policyId: "reisePluss",
     category: "Reise · bagasje",
     claim: "Kofferten min forsvant på reisen hjem fra en konferanse om tidsreiser. Flyselskapet sier den kanskje er i 2042, men de mener nok terminal 42.",
     facts: "Hun sjekket inn kofferten ved skranken, tok vare på bagasjelappen og meldte savnet bagasje til flyselskapet ved ankomst i går. Den er fortsatt borte. Konferansen var helt vanlig; ingen faktisk tidsreise fant sted. Hun kjenner ikke forsikringsvilkårene eller om flyselskapet vil levere kofferten senere.",
@@ -37,7 +40,7 @@ const answerSchema = {
 export const showcaseRouter = Router();
 
 showcaseRouter.get("/cases", (_request, response) => {
-  response.json(cases.map(({ id, title, category, claim }) => ({ id, title, category, claim })));
+  response.json(cases.map(({ id, title, policyId, category, claim }) => ({ id, title, policyId, category, claim })));
 });
 
 showcaseRouter.post("/answer", async (request, response, next) => {

@@ -1,6 +1,6 @@
 import { investigate, type BjarneCriticality, type Investigation, type PolicyId, type Turn } from "../avslagsgenerator/investigation-api";
 
-export type ShowcaseCase = { id: string; title: string; category: string; claim: string };
+export type ShowcaseCase = { id: string; title: string; policyId: PolicyId; category: string; claim: string };
 
 async function readResponse<T>(response: Response): Promise<T> {
   const body: unknown = await response.json();
@@ -24,10 +24,6 @@ export async function answerAsClaimant(caseId: string, question: string, turns: 
   return answer;
 }
 
-function policyForScenario(scenario: ShowcaseCase): PolicyId {
-  return scenario.category.startsWith("Reise") ? "reisePluss" : "innboPluss";
-}
-
 export function askBjarne(scenario: ShowcaseCase, turns: Turn[], criticality: BjarneCriticality): Promise<Investigation> {
-  return investigate(scenario.claim, turns, policyForScenario(scenario), criticality);
+  return investigate(scenario.claim, turns, scenario.policyId, criticality);
 }

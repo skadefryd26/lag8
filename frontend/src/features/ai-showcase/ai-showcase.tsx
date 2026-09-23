@@ -65,16 +65,23 @@ export function AiShowcase() {
     if (activeCase) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [activeCase, exchanges, pendingAnswer, latest]);
 
-  function start(autoplay: boolean) {
-    if (!selectedCase) return;
-    opening.reset();
-    nextTurn.reset();
-    setActiveCase(selectedCase);
+  function resetStage() {
+    setPlaying(false);
+    setActiveCase(null);
+    setOpeningResult(null);
+    setLatest(null);
     setTurns([]);
     setExchanges([]);
     setPendingAnswer(null);
-    setOpeningResult(null);
-    setLatest(null);
+    setSpeaker(null);
+    opening.reset();
+    nextTurn.reset();
+  }
+
+  function start(autoplay: boolean) {
+    if (!selectedCase) return;
+    resetStage();
+    setActiveCase(selectedCase);
     setPlaying(autoplay);
     opening.mutate(selectedCase);
   }
@@ -132,7 +139,7 @@ export function AiShowcase() {
           <section className="showcase-stage" aria-label="AI mot AI-samtale">
             <Group justify="space-between" align="flex-start" gap="md" mb="lg">
               <div><Text className="eyebrow">PÅ SCENEN · {activeCase.category.toUpperCase()}</Text><Title order={2}>{activeCase.title}</Title></div>
-              <Button variant="subtle" color="gray" disabled={busy} onClick={() => { setPlaying(false); setActiveCase(null); setLatest(null); setOpeningResult(null); setPendingAnswer(null); opening.reset(); nextTurn.reset(); }}>Velg ny sak ↺</Button>
+              <Button variant="subtle" color="gray" disabled={busy} onClick={resetStage}>Velg ny sak ↺</Button>
             </Group>
             <div className="showcase-grid">
               <div>
@@ -156,7 +163,7 @@ export function AiShowcase() {
                   {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate(activeCase); }}>Prøv å starte igjen ↻</Button> : null}
                   {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
                   {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => { nextTurn.reset(); setPlaying(!playing); }} disabled={Boolean(error && !nextTurn.isError)}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
-                  {latest?.done ? <Button color="yellow" onClick={() => { setActiveCase(null); setLatest(null); setOpeningResult(null); }}>Prøv en annen sak →</Button> : null}
+                  {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>
               <aside className="showcase-sidebar">
