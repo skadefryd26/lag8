@@ -159,7 +159,7 @@ export function Avslagsgenerator() {
       <Container size="md" py={{ base: 28, sm: 48 }}>
         <header className="generator-header">
           <Group gap="sm"><div className="bjarne-seal" aria-hidden="true">B</div><Text className="eyebrow">SKADEFRYD / BJARNES KONTOR</Text></Group>
-          <Link to="/skadeorakelet" className="side-link">Prøv Skadeorakelet ↗</Link>
+          <Group gap="lg"><Link to="/ai-mot-ai" className="side-link">Se AI mot AI ↗</Link><Link to="/skadeorakelet" className="side-link">Prøv Skadeorakelet ↗</Link></Group>
         </header>
 
         {!started && !pendingText ? (
