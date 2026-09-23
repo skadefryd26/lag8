@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { clausesFor, isPolicyId, sourceFor } from "./vilkar.js";
 
 test("hver kilde peker bare til valgt produkt og et faktisk utdrag", () => {
-  for (const id of ["reise", "reisePluss", "innbo", "innboPluss"] as const) {
+  for (const id of ["reisePluss", "innboPluss"] as const) {
     const clauses = clausesFor(id);
     assert.ok(clauses.length > 0);
     for (const clause of clauses) {
@@ -13,8 +13,9 @@ test("hver kilde peker bare til valgt produkt og et faktisk utdrag", () => {
       assert.equal(source.excerpt, clause.text);
     }
   }
-  assert.equal(sourceFor("innbo", "reise-mobil"), null);
-  assert.equal(sourceFor("innbo", "innbo-uhell"), null);
+  assert.equal(sourceFor("innboPluss", "reise-mobil"), null);
   assert.ok(sourceFor("innboPluss", "innbo-uhell"));
+  assert.equal(isPolicyId("reise"), false);
+  assert.equal(isPolicyId("innbo"), false);
   assert.equal(isPolicyId("__proto__"), false);
 });

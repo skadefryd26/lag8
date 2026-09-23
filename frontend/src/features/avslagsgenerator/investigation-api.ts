@@ -1,5 +1,5 @@
 export type Turn = { question: string; answer: string };
-export type PolicyId = "reise" | "reisePluss" | "innbo" | "innboPluss";
+export type PolicyId = "reisePluss" | "innboPluss";
 export type BjarneCriticality = "nice" | "neutral" | "critical";
 
 export type Investigation = {

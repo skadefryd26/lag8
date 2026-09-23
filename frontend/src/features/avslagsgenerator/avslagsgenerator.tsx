@@ -6,8 +6,8 @@ import { investigate, type BjarneCriticality, type Investigation, type PolicyId,
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
 const policyOptions: { label: string; value: PolicyId }[] = [
-  { label: "Reise", value: "reise" }, { label: "Reise Pluss", value: "reisePluss" },
-  { label: "Innbo", value: "innbo" }, { label: "Innbo Pluss", value: "innboPluss" },
+  { label: "Reise Pluss", value: "reisePluss" },
+  { label: "Innbo Pluss", value: "innboPluss" },
 ];
 const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
   { value: "nice", label: "Snill" },

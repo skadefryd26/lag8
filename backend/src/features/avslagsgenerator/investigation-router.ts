@@ -14,7 +14,7 @@ investigationRouter.post("/investigate", async (request, response, next) => {
       Boolean(turn) && typeof turn === "object" &&
       validText((turn as Turn).question, 500) && validText((turn as Turn).answer, 1500)) ||
     !["nice", "neutral", "critical"].includes(criticality)) {
-    response.status(400).json({ error: "Velg produkt og tone, skriv en fiktiv skademelding og svar på ett spørsmål om gangen (maks seks svar)." });
+    response.status(400).json({ error: "Velg Reise Pluss eller Innbo Pluss og tone, skriv en fiktiv skademelding og svar på ett spørsmål om gangen (maks seks svar)." });
     return;
   }
 
