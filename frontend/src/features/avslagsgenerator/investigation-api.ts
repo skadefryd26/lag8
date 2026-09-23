@@ -1,16 +1,21 @@
 export type Turn = { question: string; answer: string };
+export type PolicyId = "reisePluss" | "innboPluss";
 export type BjarneCriticality = "nice" | "neutral" | "critical";
 
 export type Investigation = {
   message: string;
-  status: "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
+  status: "investigating" | "possible_rejection" | "referred";
   nextQuestion: string;
   rejectionHope: number;
   claimSummary: string;
   relevantFacts: string[];
   possibleIssue: string;
   reasoningSummary: string;
+  thirdParty: string;
   done: boolean;
+  coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
+  source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
+  escalation: string;
 };
 
 export type BossReview = {
@@ -36,9 +41,10 @@ async function postReview<T>(path: string, payload: object): Promise<T> {
 export async function investigate(
   claim: string,
   turns: Turn[],
+  policyId: PolicyId,
   criticality: BjarneCriticality,
 ): Promise<Investigation> {
-  return postReview<Investigation>("investigate", { claim, turns, criticality });
+  return postReview<Investigation>("investigate", { claim, turns, criticality, policyId });
 }
 
 export async function escalate(claim: string, turns: Turn[], bjarne: Investigation): Promise<BossReview> {

@@ -22,7 +22,7 @@ test("boss escalation validates the case and returns a separate structured revie
   const payload = {
     claim: "Jeg mistet en fiktiv klokke i en putekrig.",
     turns: [{ question: "Hvordan skjedde det?", answer: "Den falt av under leken." }],
-    bjarne: { message: "Jeg fant ingenting.", status: "bjarne_lost", reasoningSummary: "Ingen konkret innvending." },
+    bjarne: { message: "Jeg fant ingenting.", status: "referred", reasoningSummary: "Ingen konkret innvending." },
   };
   let gatewayCalls = 0;
   let malformed = false;

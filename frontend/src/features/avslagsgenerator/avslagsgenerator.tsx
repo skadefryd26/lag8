@@ -2,9 +2,15 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { escalate, investigate, type BjarneCriticality, type BossReview, type Investigation, type Turn } from "./investigation-api";
+import { escalate, investigate, type BjarneCriticality, type BossReview, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
+const claimQuestions = 2;
+const minimumAnswers = 8;
+const policyOptions: { label: string; value: PolicyId }[] = [
+  { label: "Reise Pluss", value: "reisePluss" },
+  { label: "Innbo Pluss", value: "innboPluss" },
+];
 const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
   { value: "nice", label: "Snill" },
   { value: "neutral", label: "Nøytral" },
@@ -21,15 +27,18 @@ type Escalation = { exchangeIndex: number; review: BossReview };
 
 function VerdictCard({ result }: { result: Investigation }) {
   const issue = result.status === "possible_rejection";
-  const lost = result.status === "bjarne_lost";
   return (
-    <Paper className={`reveal-card ${lost ? "reveal-lost" : issue ? "reveal-issue" : "reveal-unknown"}`} p={{ base: "lg", sm: "xl" }} radius="lg" role="status">
-      <Text className="eyebrow">SAKEN ER FERDIG UNDERSØKT</Text>
-      <Title order={2} mt="xs">{lost ? "Bjarne tapte 🎉" : issue ? "Bjarne fant noe 👀" : "Bjarne trenger mer 🤔"}</Title>
+    <Paper className={`reveal-card ${issue ? "reveal-issue" : "reveal-unknown"}`} p={{ base: "lg", sm: "xl" }} radius="lg" role="status">
+      <Text className="eyebrow">BJARNES FIKTIVE SLUTTRESULTAT</Text>
+      <Title order={2} mt="xs">{issue ? "Mulig avslag 👀" : "Sendt til videre utredning 🗂️"}</Title>
       <Text className="reveal-message" mt="md">{result.message}</Text>
       {issue && result.possibleIssue ? <Text className="issue-note" mt="md">{result.possibleIssue}</Text> : null}
+      {!issue ? <Text className="issue-note" mt="md">Mottaker: {result.thirdParty} (oppdiktet)</Text> : null}
       <Text mt="md">{result.reasoningSummary}</Text>
-      <Text c="dimmed" size="sm" mt="lg">Dette er en leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av forsikringen og vilkårene dine.</Text>
+      <Text fw={700} mt="lg">{result.coverage === "possible_rejection" ? "Mulig grunnlag mot dekning" : result.coverage === "possibly_covered" ? "Ingen relevant avslagsgrunn funnet" : "Dekning uavklart"}</Text>
+      {result.source ? <Text size="sm" mt="sm">Kilde: <a href={result.source.url} target="_blank" rel="noreferrer">{result.source.product}, {result.source.section}, PDF-side {result.source.page}</a>. {result.source.excerpt}</Text> : null}
+      {result.escalation ? <Text c="dimmed" size="sm" mt="lg">Bjarnes rent fiktive nødeskalering: {result.escalation}</Text> : null}
+      <Text c="dimmed" size="sm" mt="lg">Offentlige alminnelige vilkår er bare et oppslag. Dette er en leken vurdering, ikke en dekningsavgjørelse; den individuelle avtalen gjelder.</Text>
     </Paper>
   );
 }
@@ -54,6 +63,7 @@ function BossCard({ review }: { review: BossReview }) {
 export function Avslagsgenerator() {
   const [claim, setClaim] = useState("");
   const [draft, setDraft] = useState("");
+  const [policyId, setPolicyId] = useState<PolicyId>("innboPluss");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
@@ -61,8 +71,8 @@ export function Avslagsgenerator() {
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: ({ text, history, criticality }: { text: string; history: Turn[]; criticality: BjarneCriticality }) =>
-      investigate(text, history, criticality),
+    mutationFn: ({ text, history, policy, tone }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality }) =>
+      investigate(text, history, policy, tone),
   });
   const bossMutation = useMutation({
     mutationFn: ({ caseText, history, bjarne }: { caseText: string; history: Turn[]; bjarne: Investigation; exchangeIndex: number }) =>
@@ -73,6 +83,7 @@ export function Avslagsgenerator() {
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
   const latestEscalated = escalations.some(({ exchangeIndex }) => exchangeIndex === exchanges.length - 1);
+  const personalPhase = turns.length >= claimQuestions && !latest?.done;
 
   useEffect(() => {
     if (started) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -87,12 +98,12 @@ export function Avslagsgenerator() {
     bossMutation.reset();
     setPendingText(text);
     try {
-      const result = await mutation.mutateAsync({ text: started ? claim : text, history, criticality });
+      const result = await mutation.mutateAsync({ text: started ? claim : text, history, policy: policyId, tone: criticality });
       if (!started) setClaim(text);
       setTurns(history);
       setExchanges((previous) => [...previous, { answer: text, response: result }]);
       setDraft("");
-      if (result.status === "bjarne_lost") {
+      if (result.status === "referred") {
         bossMutation.mutate({ caseText: started ? claim : text, history, bjarne: result, exchangeIndex: exchanges.length });
       }
     } catch {
@@ -119,6 +130,7 @@ export function Avslagsgenerator() {
     setEscalations([]);
     setPendingText("");
     setCriticality("neutral");
+    setPolicyId("innboPluss");
   }
 
   return (
@@ -134,12 +146,12 @@ export function Avslagsgenerator() {
             <Badge color="yellow" variant="light" size="lg">EN HELT SERIØS U-SERIØS UNDERSØKELSE</Badge>
             <Title order={1}>Avslags<span>generatoren.</span></Title>
             <Text className="intro-lead">Bjarne har ett mål: finne en grunn til å si nei.</Text>
-            <Text c="dimmed" className="intro-description">Fortell hva som skjedde. Bjarne stiller spørsmål til han finner noe som faktisk kan bety noe – eller må innrømme nederlag.</Text>
+            <Text c="dimmed" className="intro-description">Finn på en skade og en oppdiktet figur. Etter to skadespørsmål gransker Bjarne figurens bakgrunn, bekjentskaper og mistenkelig mange ukjente detaljer. Minst åtte spørsmål før dommen faller.</Text>
             <div className="intro-divider" />
           </section>
         ) : (
           <section className="conversation-heading">
-            <Text className="eyebrow">SAKSNUMMER 001 · UNDER BEHANDLING</Text>
+            <Text className="eyebrow">SAKSNUMMER 001 · {latest?.done ? "AVSLUTTET" : personalPhase ? `BAKGRUNNSFORHØR ${turns.length + 1} / ${minimumAnswers}` : `SKADEFORHØR ${Math.min(turns.length + 1, claimQuestions)} / ${claimQuestions}`}</Text>
             <Group justify="space-between" align="end" gap="md">
               <Title order={1}>Bjarnes undersøkelse<span>.</span></Title>
               <Button onClick={restart} variant="subtle" color="gray" size="sm" disabled={mutation.isPending || bossMutation.isPending}>Ny sak ↺</Button>
@@ -149,6 +161,7 @@ export function Avslagsgenerator() {
 
         <div className="generator-grid">
           <section className="conversation-column" aria-label="Samtale med Bjarne">
+            {!started && !pendingText ? <Paper p="md" radius="lg" mb="md"><Text fw={700} mb="xs">Hvilket vilkår skal Bjarne slå opp i?</Text><SegmentedControl fullWidth data={policyOptions} value={policyId} onChange={(value) => setPolicyId(value as PolicyId)} aria-label="Velg forsikringsprodukt" /><Text c="dimmed" size="xs" mt="xs">Offentlige alminnelige vilkår, ikke en individuell avtale.</Text></Paper> : <Text c="dimmed" size="sm" mb="sm">Oppslag: {policyOptions.find((option) => option.value === policyId)?.label}</Text>}
             {started || pendingText ? (
               <Stack gap="lg" className="conversation-log" aria-live="polite">
                 {exchanges.map((exchange, index) => (
@@ -159,7 +172,7 @@ export function Avslagsgenerator() {
                     <div className="message-row">
                       <div className="avatar" aria-hidden="true">B</div>
                       <div className="message-bubble bjarne-bubble">
-                        <Text className="bubble-label">BJARNE · SAKSBEHANDLER</Text>
+                        <Text className="bubble-label">BJARNE · {index >= claimQuestions ? "PERSONGRANSKER" : "SAKSBEHANDLER"}</Text>
                         <Text>{exchange.response.message}</Text>
                         {!exchange.response.done ? <Text className="bjarne-question" mt="sm">{exchange.response.nextQuestion}</Text> : null}
                       </div>
@@ -222,6 +235,7 @@ export function Avslagsgenerator() {
                     <Text c="dimmed" size="xs" mt="xs">{criticalityDescriptions[criticality]}</Text>
                   </div>
                 ) : null}
+                {personalPhase ? <Text className="phase-hint" size="sm" mb="sm">To skadespørsmål er unnagjort. Nå gransker Bjarne den oppdiktede figuren. «Jeg vet ikke» er et gyldig svar, men kan gi saken en komisk omvei. Ikke oppgi ekte navn, kontonumre eller andre personopplysninger.</Text> : null}
                 <Textarea
                   aria-label={started ? "Svar på Bjarnes spørsmål" : "Hva har skjedd?"}
                   placeholder={started ? "Svar Bjarne med egne ord ..." : "F.eks. Jeg mistet mobilen i toalettet ..."}
@@ -251,7 +265,7 @@ export function Avslagsgenerator() {
             <Paper className="hope-card" p="lg" radius="lg">
               <Text className="eyebrow">BJARNES HÅP OM AVSLAG</Text>
               <Group align="baseline" gap={4} mt="sm"><span className="hope-number">{latest?.rejectionHope ?? 78}</span><span className="hope-percent">%</span></Group>
-              <Progress value={latest?.rejectionHope ?? 78} color={latest?.done && latest.status === "bjarne_lost" ? "teal" : "yellow"} radius="xl" size="lg" mt="sm" animated={mutation.isPending} />
+              <Progress value={latest?.rejectionHope ?? 78} color="yellow" radius="xl" size="lg" mt="sm" animated={mutation.isPending} />
               <Text c="dimmed" size="xs" mt="sm">Kun Bjarnes optimisme. Ikke sannsynlighet for avslag.</Text>
             </Paper>
             <Paper className="case-status" p="lg" radius="lg" mt="md">
