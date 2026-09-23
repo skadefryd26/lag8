@@ -1,5 +1,7 @@
 export type Turn = { question: string; answer: string };
 export type PolicyId = "reise" | "reisePluss" | "innbo" | "innboPluss";
+export type BjarneCriticality = "nice" | "neutral" | "critical";
+
 export type Investigation = {
   message: string;
   status: "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
@@ -15,11 +17,16 @@ export type Investigation = {
   escalation: string;
 };
 
-export async function investigate(claim: string, turns: Turn[], policyId: PolicyId): Promise<Investigation> {
+export async function investigate(
+  claim: string,
+  turns: Turn[],
+  policyId: PolicyId,
+  criticality: BjarneCriticality,
+): Promise<Investigation> {
   const response = await fetch("/api/avslagsgenerator/investigate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns, policyId }),
+    body: JSON.stringify({ claim, turns, criticality, policyId }),
   });
   const body: unknown = await response.json();
   if (!response.ok) {

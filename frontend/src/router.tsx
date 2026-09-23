@@ -1,6 +1,5 @@
 import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
 import { GameBoard } from "./features/vilkarsbingo/components/game-board";
-import { AvslagBoard } from "./features/avslagsgeneratoren/components/avslag-board";
 import { Avslagsgenerator } from "./features/avslagsgenerator/avslagsgenerator";
 
 const rootRoute = createRootRoute({
@@ -19,12 +18,6 @@ const oracleRoute = createRoute({
   component: GameBoard,
 });
 
-const avslagRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/avslag",
-  component: AvslagBoard,
-});
-
-const routeTree = rootRoute.addChildren([indexRoute, avslagRoute, oracleRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, oracleRoute]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });

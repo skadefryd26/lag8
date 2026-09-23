@@ -2,13 +2,23 @@ import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedContr
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { investigate, type Investigation, type PolicyId, type Turn } from "./investigation-api";
+import { investigate, type BjarneCriticality, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
 const policyOptions: { label: string; value: PolicyId }[] = [
   { label: "Reise", value: "reise" }, { label: "Reise Pluss", value: "reisePluss" },
   { label: "Innbo", value: "innbo" }, { label: "Innbo Pluss", value: "innboPluss" },
 ];
+const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
+  { value: "nice", label: "Snill" },
+  { value: "neutral", label: "Nøytral" },
+  { value: "critical", label: "Kritisk" },
+];
+const criticalityDescriptions: Record<BjarneCriticality, string> = {
+  nice: "Bjarne later som han heier på deg. Han gjør det nok ikke.",
+  neutral: "Bjarne holder det saklig mens han leter etter detaljer.",
+  critical: "Bjarne mistenker hver kommafeil med full kaffemangel.",
+};
 
 type Exchange = { answer: string; response: Investigation };
 
@@ -37,8 +47,12 @@ export function Avslagsgenerator() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pendingText, setPendingText] = useState("");
+  const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
-  const mutation = useMutation({ mutationFn: ({ text, history, policy }: { text: string; history: Turn[]; policy: PolicyId }) => investigate(text, history, policy) });
+  const mutation = useMutation({
+    mutationFn: ({ text, history, policy, tone }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality }) =>
+      investigate(text, history, policy, tone),
+  });
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
 
@@ -54,7 +68,7 @@ export function Avslagsgenerator() {
     const history = started && latest ? [...turns, { question: latest.nextQuestion, answer: text }] : [];
     setPendingText(text);
     try {
-      const result = await mutation.mutateAsync({ text: started ? claim : text, history, policy: policyId });
+      const result = await mutation.mutateAsync({ text: started ? claim : text, history, policy: policyId, tone: criticality });
       if (!started) setClaim(text);
       setTurns(history);
       setExchanges((previous) => [...previous, { answer: text, response: result }]);
@@ -80,6 +94,7 @@ export function Avslagsgenerator() {
     setTurns([]);
     setExchanges([]);
     setPendingText("");
+    setCriticality("neutral");
   }
 
   return (
@@ -148,6 +163,19 @@ export function Avslagsgenerator() {
 
             {!latest?.done ? (
               <form onSubmit={submit} className="composer">
+                {!started ? (
+                  <div className="criticality-picker">
+                    <Text className="eyebrow">HVOR KRITISK ER BJARNE?</Text>
+                    <SegmentedControl
+                      fullWidth
+                      mt="xs"
+                      data={criticalityOptions}
+                      value={criticality}
+                      onChange={(value) => setCriticality(value as BjarneCriticality)}
+                    />
+                    <Text c="dimmed" size="xs" mt="xs">{criticalityDescriptions[criticality]}</Text>
+                  </div>
+                ) : null}
                 <Textarea
                   aria-label={started ? "Svar på Bjarnes spørsmål" : "Hva har skjedd?"}
                   placeholder={started ? "Svar Bjarne med egne ord ..." : "F.eks. Jeg mistet mobilen i toalettet ..."}
@@ -160,7 +188,7 @@ export function Avslagsgenerator() {
                   onKeyDown={onKeyDown}
                   disabled={mutation.isPending}
                 />
-                <Group justify="space-between" mt="md" gap="sm">
+                <Group justify="space-between" mt={started ? "md" : "lg"} gap="sm">
                   <Text c="dimmed" size="xs">Enter for å sende · Shift+Enter for ny linje</Text>
                   <Button type="submit" color="yellow" size="md" loading={mutation.isPending} disabled={!draft.trim()}>
                     {started ? "Send svar →" : "La Bjarne undersøke saken →"}

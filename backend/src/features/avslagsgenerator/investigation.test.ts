@@ -33,13 +33,13 @@ const turns: Turn[] = [
 
 test("mulig avslag må ha kilde fra valgt produkt", async () => {
   mockAnswer("reise-mobil");
-  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss");
+  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
   assert.equal(invalid.coverage, "unclear");
   assert.equal(invalid.source, null);
   assert.equal(invalid.possibleIssue, "");
 
   mockAnswer("innbo-uhell");
-  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss");
+  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
   assert.equal(valid.coverage, "possible_rejection");
   assert.match(valid.source?.url ?? "", /Innbo-Pluss.*#page=4$/);
   assert.equal(valid.escalation, "");
@@ -47,7 +47,7 @@ test("mulig avslag må ha kilde fra valgt produkt", async () => {
 
 test("satirisk eskalering er adskilt fra dekningsgrunnlag", async () => {
   mockAnswer("", "bjarne_lost");
-  const result = await investigate("Fiktiv vannskade", turns, "innboPluss");
+  const result = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
   assert.equal(result.coverage, "possibly_covered");
   assert.equal(result.source, null);
   assert.match(result.escalation, /kaffe/);
