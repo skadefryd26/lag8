@@ -6,6 +6,7 @@ import {
   Group,
   Loader,
   Paper,
+  SegmentedControl,
   Stack,
   Text,
   Textarea,
@@ -15,9 +16,20 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { answerQuestion, startCase } from "../api/avslag-api";
-import type { InterrogationQuestion, Rejection } from "../avslag-types";
+import type { BjarneCriticality, InterrogationQuestion, Rejection } from "../avslag-types";
 
 const maxQuestions = 4;
+const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
+  { value: "nice", label: "Snill" },
+  { value: "neutral", label: "Nøytral" },
+  { value: "critical", label: "Kritisk" },
+];
+
+const criticalityDescriptions: Record<BjarneCriticality, string> = {
+  nice: "Bjarne får deg til å tro at han er på din side. Avslaget kommer likevel.",
+  neutral: "Bjarne holder spørsmålene saklige. Avslaget er fortsatt uunngåelig.",
+  critical: "Bjarne mistenker noe i hvert eneste svar. Avslaget er garantert.",
+};
 
 type CaseState = {
   sessionId: string;
@@ -28,12 +40,16 @@ type CaseState = {
 
 function IntakePanel({
   claim,
+  criticality,
   onClaimChange,
+  onCriticalityChange,
   onSubmit,
   isPending,
 }: {
   claim: string;
+  criticality: BjarneCriticality;
   onClaimChange: (value: string) => void;
+  onCriticalityChange: (value: BjarneCriticality) => void;
   onSubmit: () => void;
   isPending: boolean;
 }) {
@@ -41,7 +57,7 @@ function IntakePanel({
     <Paper className="oracle-card" p={{ base: "lg", sm: "xl" }} radius="lg">
       <Badge color="yellow" variant="light">MELD INN SKADE</Badge>
       <Title order={2} mt="sm">Hva har «skjedd»?</Title>
-      <Text c="dimmed" mt="xs">Beskriv en oppdiktet skadesak. Bjarne vil uansett finne noe å mistenke deg for.</Text>
+      <Text c="dimmed" mt="xs">Beskriv en oppdiktet skadesak. Bjarne finner alltid en grunn til å avslå.</Text>
       <Textarea
         mt="md"
         minRows={4}
@@ -52,6 +68,15 @@ function IntakePanel({
         value={claim}
         onChange={(event) => onClaimChange(event.currentTarget.value)}
       />
+      <Text className="instruction" mt="lg">HVOR KRITISK ER BJARNE?</Text>
+      <SegmentedControl
+        fullWidth
+        mt="xs"
+        data={criticalityOptions}
+        value={criticality}
+        onChange={(value) => onCriticalityChange(value as BjarneCriticality)}
+      />
+      <Text c="dimmed" mt="xs" size="sm">{criticalityDescriptions[criticality]}</Text>
       <Button
         color="yellow"
         fullWidth
@@ -73,7 +98,7 @@ function InterrogationPanel({ game, onAnswer }: { game: CaseState; onAnswer: (op
     <Paper className="oracle-card" p={{ base: "lg", sm: "xl" }} radius="lg">
       <Group align="flex-start" justify="space-between" wrap="nowrap">
         <div>
-          <Badge color="yellow" variant="light">FORHØR {game.questionNumber} AV {maxQuestions}</Badge>
+          <Badge color="yellow" variant="light">SPØRSMÅL {game.questionNumber} AV {maxQuestions}</Badge>
           <Title order={2} mt="sm">{game.question.text}</Title>
         </div>
         <span className="case-emoji" aria-hidden="true">🕵️</span>
@@ -115,10 +140,12 @@ function RejectionPanel({ rejection, onRestart }: { rejection: Rejection; onRest
 
 export function AvslagBoard() {
   const [claim, setClaim] = useState("");
+  const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const [game, setGame] = useState<CaseState>();
 
   const startMutation = useMutation({
-    mutationFn: (text: string) => startCase(text),
+    mutationFn: ({ claim, criticality }: { claim: string; criticality: BjarneCriticality }) =>
+      startCase(claim, criticality),
     onSuccess: (response) => {
       setGame({
         sessionId: response.sessionId,
@@ -144,6 +171,7 @@ export function AvslagBoard() {
   function restart() {
     setGame(undefined);
     setClaim("");
+    setCriticality("neutral");
     startMutation.reset();
     answerMutation.reset();
   }
@@ -165,7 +193,7 @@ export function AvslagBoard() {
           </header>
 
           <Group grow className="score-strip">
-            <div><Text className="stat-label">FORHØR MAKS</Text><Text className="stat-value">{maxQuestions}</Text></div>
+            <div><Text className="stat-label">MAKS SPØRSMÅL</Text><Text className="stat-value">{maxQuestions}</Text></div>
             <div><Text className="stat-label">GODKJENT-RATE</Text><Text className="stat-value">0%</Text></div>
             <div><Text className="stat-label">BJARNES KAFFE</Text><Text className="stat-value">KRITISK</Text></div>
           </Group>
@@ -184,8 +212,10 @@ export function AvslagBoard() {
           ) : (
             <IntakePanel
               claim={claim}
+              criticality={criticality}
               onClaimChange={setClaim}
-              onSubmit={() => startMutation.mutate(claim.trim())}
+              onCriticalityChange={setCriticality}
+              onSubmit={() => startMutation.mutate({ claim: claim.trim(), criticality })}
               isPending={startMutation.isPending}
             />
           )}

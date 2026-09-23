@@ -3,6 +3,8 @@ export type QuestionOption = {
   label: string;
 };
 
+export type BjarneCriticality = "nice" | "neutral" | "critical";
+
 export type InterrogationQuestion = {
   text: string;
   options: readonly QuestionOption[];
