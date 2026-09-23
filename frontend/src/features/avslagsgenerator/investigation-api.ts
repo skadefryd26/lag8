@@ -4,15 +4,16 @@ export type BjarneCriticality = "nice" | "neutral" | "critical";
 
 export type Investigation = {
   message: string;
-  status: "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
+  status: "investigating" | "possible_rejection" | "referred";
   nextQuestion: string;
   rejectionHope: number;
   claimSummary: string;
   relevantFacts: string[];
   possibleIssue: string;
   reasoningSummary: string;
+  thirdParty: string;
   done: boolean;
-  coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
+  coverage: "possible_rejection" | "unclear" | "investigating";
   source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
   escalation: string;
   handoffId: string | null;
@@ -39,12 +40,11 @@ export async function investigate(
   turns: Turn[],
   policyId: PolicyId,
   criticality: BjarneCriticality,
-  forceVerdict = false,
 ): Promise<Investigation> {
   const response = await fetch("/api/avslagsgenerator/investigate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns, criticality, policyId, forceVerdict }),
+    body: JSON.stringify({ claim, turns, criticality, policyId }),
   });
   const body: unknown = await response.json();
   if (!response.ok) {

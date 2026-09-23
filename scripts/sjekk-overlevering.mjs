@@ -9,7 +9,7 @@ try {
     const body = route.request().postDataJSON();
     assert.equal(body.policyId, "reisePluss");
     assert.equal(body.claim, "Min fiktive sykkel forsvant på tur");
-    const isVerdict = body.forceVerdict === true;
+    const isVerdict = body.turns.length >= 8;
     await route.fulfill({ json: isVerdict ? {
       message: "*Sukk.* Reise-Bjarne har funnet et halmstrå.", status: "possible_rejection",
       nextQuestion: "", rejectionHope: 90, claimSummary: body.claim, relevantFacts: [body.claim],
@@ -31,12 +31,11 @@ try {
   await page.getByText("Reise Pluss", { exact: true }).click();
   await page.getByLabel("Hva har skjedd?").fill("Min fiktive sykkel forsvant på tur");
   await page.getByRole("button", { name: /La Bjarne undersøke saken/ }).click();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     await page.getByLabel("Svar på Bjarnes spørsmål").fill(`Fiktivt svar ${i + 1}`);
     await page.getByRole("button", { name: /Send svar/ }).click();
-    await page.getByText(`Hva skjedde i runde ${i + 2}?`).waitFor();
+    if (i < 7) await page.getByText(`Hva skjedde i runde ${i + 2}?`).waitFor();
   }
-  await page.getByRole("button", { name: /Krev en dom fra Bjarne nå/ }).click();
   await page.getByRole("button", { name: /Send saken til Innbo-Bjarne/ }).click();
   await page.getByLabel("Svar fra Innbo-Bjarne").getByText(/Sykkelen er en sak for Reise-Bjarne/).waitFor();
   assert.equal(handoffCalls, 1);

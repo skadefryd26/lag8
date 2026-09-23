@@ -11,60 +11,65 @@ after(() => {
   else process.env.AI_GATEWAY_TOKEN = originalToken;
 });
 
-function mockAnswer(sourceId: string, status = "possible_rejection", product: "innboPluss" | "reisePluss" = "innboPluss") {
+function mockAnswer(sourceId: string, status: "investigating" | "possible_rejection" | "referred", product: "innboPluss" | "reisePluss" = "innboPluss") {
   globalThis.fetch = async (_url, options) => {
     const request = JSON.parse(String(options?.body)) as { input: string };
     assert.ok(request.input.includes(`Valgt produkt: ${product}`));
     if (product === "innboPluss") assert.doesNotMatch(request.input, /reise-mobil/);
     else assert.doesNotMatch(request.input, /innbo-uhell/);
     const answer = {
-       message: "*Sukk.* Jeg undersøkte saken.", status, nextQuestion: status === "investigating" ? "Hva skjedde videre?" : "", rejectionHope: 43,
-      claimSummary: "Fiktiv vannskade", relevantFacts: ["Vann på mobil"],
-      possibleIssue: "Mulig unntak", reasoningSummary: "Begrunnelsen er betinget.",
-       done: status !== "investigating", sourceId, escalation: "Bjarne er bekymret for kaffekvaliteten.",
+      message: "*Sukk.* Jeg undersøkte saken.", status,
+      nextQuestion: status === "investigating" ? "Hva skjedde videre?" : "",
+      rejectionHope: 43, claimSummary: "Fiktiv vannskade", relevantFacts: ["Vann på mobil"],
+      possibleIssue: status === "possible_rejection" ? "Mulig unntak" : "",
+      reasoningSummary: "Begrunnelsen er betinget.",
+      done: status !== "investigating", sourceId,
+      thirdParty: status === "referred" ? "Den fiktive ambassaden" : "",
     };
     return new Response(JSON.stringify({ output: [{ content: [{ text: JSON.stringify(answer) }] }] }), { status: 200 });
   };
 }
 
-const turns: Turn[] = Array.from({ length: 5 }, (_, index) => ({ question: `Skadespørsmål ${index + 1}?`, answer: "Det skjedde hjemme." }));
+const turns: Turn[] = Array.from({ length: 8 }, (_, index) => ({ question: `Spørsmål ${index + 1}?`, answer: "En oppdiktet hendelse." }));
 
 test("mulig avslag må ha kilde fra valgt produkt", async () => {
-  mockAnswer("reise-mobil");
-  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
-  assert.equal(invalid.coverage, "unclear");
+  mockAnswer("reise-mobil", "possible_rejection");
+  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
+  assert.equal(invalid.status, "referred");
   assert.equal(invalid.source, null);
   assert.equal(invalid.possibleIssue, "");
+  assert.equal(invalid.handoffId, null);
 
-  mockAnswer("innbo-uhell");
-  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
+  mockAnswer("innbo-uhell", "possible_rejection");
+  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
   assert.equal(valid.coverage, "possible_rejection");
   assert.match(valid.source?.url ?? "", /Innbo-Pluss.*#page=4$/);
-  assert.equal(valid.escalation, "");
   assert.equal(valid.handoffId, null);
 });
 
-test("kun en kildebegrunnet Reise Pluss-innvending gir overlevering", async () => {
+test("kun kildebegrunnet avslag fra Reise Pluss gir overlevering", async () => {
   mockAnswer("reise-mobil", "possible_rejection", "reisePluss");
-  const valid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral", true);
-  assert.equal(valid.status, "possible_rejection");
+  const valid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral");
   assert.match(valid.handoffId ?? "", /^[0-9a-f-]{36}$/);
   mockAnswer("innbo-uhell", "possible_rejection", "reisePluss");
-  const invalid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral", true);
+  const invalid = await investigate("Fiktiv vannskade", turns, "reisePluss", "neutral");
+  assert.equal(invalid.status, "referred");
   assert.equal(invalid.handoffId, null);
 });
 
-test("satirisk eskalering er adskilt fra dekningsgrunnlag", async () => {
-  mockAnswer("", "bjarne_lost");
-  const result = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
-  assert.equal(result.coverage, "possibly_covered");
+test("ukjent informasjon fører til fiktiv videresending, ikke avslag", async () => {
+  mockAnswer("", "referred");
+  const result = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
+  assert.equal(result.coverage, "unclear");
   assert.equal(result.source, null);
-  assert.match(result.escalation, /kaffe/);
+  assert.equal(result.thirdParty, "Den fiktive ambassaden");
+  assert.equal(result.handoffId, null);
 });
 
-test("Bjarne stiller fem skadespørsmål før personforhør", async () => {
+test("Bjarne spør videre før åtte svar", async () => {
   mockAnswer("", "investigating");
-  const result = await investigate("Fiktiv vannskade", turns.slice(0, 4), "innboPluss", "neutral");
+  const result = await investigate("Fiktiv vannskade", turns.slice(0, 2), "innboPluss", "neutral");
   assert.equal(result.status, "investigating");
   assert.equal(result.nextQuestion, "Hva skjedde videre?");
+  assert.equal(result.handoffId, null);
 });
