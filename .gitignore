@@ -19,3 +19,11 @@ sjekk-appen.png
 
 # Mellomsteget lagark.py lager før PDF-en
 arrangor/lagark/lagark.html
+
+# Vilkårsdatabasen bygges automatisk fra PDF-ene
+backend/vilkar/vilkar.db
+backend/vilkar/vilkar.db-*
+dev.log
+
+# Lokal embeddingmodell for vektorsøk (lastes ned automatisk)
+backend/.modeller/

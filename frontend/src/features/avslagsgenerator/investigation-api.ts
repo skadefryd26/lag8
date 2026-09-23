@@ -1,6 +1,7 @@
 export type Turn = { question: string; answer: string };
 export type PolicyId = "reisePluss" | "innboPluss";
 export type BjarneCriticality = "nice" | "neutral" | "critical";
+export type CitedClause = { id: string; product: string; page: number; text: string; bjarneTwist: string };
 
 export type Investigation = {
   message: string;
@@ -16,6 +17,7 @@ export type Investigation = {
   coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
   source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
   escalation: string;
+  clauses: CitedClause[];
 };
 
 export type BossQuestion = {

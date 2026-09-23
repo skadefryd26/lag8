@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/api": "http://localhost:3001",
+      // PORT lar deg kjøre en ekstra kopi av appen (f.eks. PORT=3011) ved siden av en som allerede bruker 3001.
+      "/api": `http://localhost:${process.env.PORT ?? 3001}`,
     },
   },
 });
