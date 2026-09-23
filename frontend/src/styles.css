@@ -117,6 +117,28 @@ button { font: inherit; }
 .reveal-card h2 { color: #f6edda; font-family: Georgia, serif; font-size: clamp(2rem, 5vw, 3rem); }
 .reveal-message { font-size: 1.2rem; font-weight: 600; }
 .issue-note { padding: 12px 15px; border-left: 3px solid #edbf56; background: rgba(0, 0, 0, .14); }
+.bjarne-message { font-size: 1.05rem; }
+.twist-list { display: grid; gap: 14px; margin: 14px 0 4px; white-space: normal; }
+.twist { margin: 0; }
+.twist-quote { margin: 0; padding: 4px 0 4px 16px; border-left: 3px solid #edbf56; color: #f6edda; font-family: Georgia, serif; font-size: 1.22rem; font-style: italic; line-height: 1.45; }
+.twist figcaption { margin: 6px 0 0 16px; }
+.source-chip { padding: 2px 9px; border: 1px solid rgba(237, 191, 86, .3); border-radius: 999px; color: rgba(246, 237, 218, .6); font-size: .72rem; }
+.source-chip:hover { border-color: #edbf56; color: #edbf56; }
+.source-popover { border-color: rgba(237, 191, 86, .4); background: #1b261c; color: #f6edda; }
+.source-list { display: grid; gap: 4px; }
+.source-item { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(237, 191, 86, .15); }
+.clause-quote { color: #cfc8b6; font-family: Georgia, serif; white-space: pre-line; }
+.clause-toggle { color: #edbf56; font-size: .72rem; font-weight: 700; }
+.escalation-actions { margin-top: 16px; }
+.boss-card { border: 2px solid rgba(241, 121, 105, .65); background: #372420; animation: arrive .5s ease-out both; }
+.boss-card h2 { color: #f6edda; font-family: Georgia, serif; font-size: clamp(1.8rem, 5vw, 2.6rem); }
+.boss-card .eyebrow, .boss-avatar { color: #f5a398; }
+.boss-avatar { border-color: #f5a398; }
+.boss-bubble { border: 1px solid rgba(241, 121, 105, .5); background: #372420; }
+.boss-question { color: #f5a398; font-weight: 700; }
+.boss-exchange { display: grid; gap: 15px; }
+.boss-composer { margin-top: 0; border-color: rgba(241, 121, 105, .5); }
+.boss-card .issue-note { border-color: #f5a398; }
 .restart-button { margin-top: 16px; }
 @keyframes arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pulse { from { opacity: .35; } to { opacity: 1; } }

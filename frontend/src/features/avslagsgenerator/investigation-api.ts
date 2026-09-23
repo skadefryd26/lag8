@@ -1,6 +1,7 @@
 export type Turn = { question: string; answer: string };
 export type PolicyId = "reisePluss" | "innboPluss";
 export type BjarneCriticality = "nice" | "neutral" | "critical";
+export type CitedClause = { id: string; product: string; page: number; text: string; bjarneTwist: string };
 
 export type Investigation = {
   message: string;
@@ -17,22 +18,38 @@ export type Investigation = {
   source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
   escalation: string;
   handoffId: string | null;
+  clauses: CitedClause[];
 };
 
 export type InnboHandoff = { line: string; context: string };
 
-export async function handoffToInnbo(handoffId: string): Promise<InnboHandoff> {
-  const response = await fetch("/api/avslagsgenerator/handoff", {
+export type BossQuestion = {
+  message: string;
+  question: string;
+};
+
+export type BossReview = {
+  message: string;
+  scrutiny: string;
+  conclusion: "possible_issue" | "nothing_found" | "needs_information";
+};
+
+async function postReview<T>(path: string, payload: object, defaultError = "Bjarne mistet papirene sine. Prøv igjen om litt."): Promise<T> {
+  const response = await fetch(`/api/avslagsgenerator/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ handoffId }),
+    body: JSON.stringify(payload),
   });
   const body: unknown = await response.json();
   if (!response.ok) {
     throw new Error(body && typeof body === "object" && "error" in body && typeof body.error === "string"
-      ? body.error : "Innbo-Bjarne tok ikke telefonen. Prøv igjen.");
+      ? body.error : defaultError);
   }
-  return body as InnboHandoff;
+  return body as T;
+}
+
+export async function handoffToInnbo(handoffId: string): Promise<InnboHandoff> {
+  return postReview<InnboHandoff>("handoff", { handoffId }, "Innbo-Bjarne tok ikke telefonen. Prøv igjen.");
 }
 
 export async function investigate(
@@ -41,15 +58,21 @@ export async function investigate(
   policyId: PolicyId,
   criticality: BjarneCriticality,
 ): Promise<Investigation> {
-  const response = await fetch("/api/avslagsgenerator/investigate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns, criticality, policyId }),
-  });
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    throw new Error(body && typeof body === "object" && "error" in body && typeof body.error === "string"
-      ? body.error : "Bjarne mistet papirene sine. Prøv igjen om litt.");
-  }
-  return body as Investigation;
+  return postReview<Investigation>("investigate", { claim, turns, criticality, policyId });
+}
+
+export type BossCase = { claim: string; turns: Turn[]; bjarne: Investigation };
+
+function bossPayload({ claim, turns, bjarne }: BossCase) {
+  return {
+    claim, turns, bjarne: { message: bjarne.message, status: bjarne.status, reasoningSummary: bjarne.reasoningSummary },
+  };
+}
+
+export async function escalate(context: BossCase): Promise<BossQuestion> {
+  return postReview<BossQuestion>("escalate", bossPayload(context));
+}
+
+export async function answerBoss(context: BossCase, question: string, answer: string): Promise<BossReview> {
+  return postReview<BossReview>("escalate/answer", { ...bossPayload(context), question, answer });
 }
