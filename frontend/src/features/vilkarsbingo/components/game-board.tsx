@@ -125,7 +125,7 @@ export function GameBoard() {
           {!activeGame.guess ? <Text c="dimmed" size="xs" ta="center">Hold hendelsen i hodet og velg svaret som passer best. Ingen personopplysninger, ingen ekte saker, ingen juridisk rådgivning.</Text> : null}
 
           <Group justify="center">
-            <Button component={Link} to="/avslag" variant="subtle" color="gray" size="xs">
+            <Button component={Link} to="/" variant="subtle" color="gray" size="xs">
               Prøv Avslagsgeneratoren →
             </Button>
           </Group>

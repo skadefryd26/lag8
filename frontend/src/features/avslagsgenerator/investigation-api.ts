@@ -1,4 +1,6 @@
 export type Turn = { question: string; answer: string };
+export type BjarneCriticality = "nice" | "neutral" | "critical";
+
 export type Investigation = {
   message: string;
   status: "investigating" | "possible_rejection" | "bjarne_lost" | "more_information";
@@ -11,11 +13,15 @@ export type Investigation = {
   done: boolean;
 };
 
-export async function investigate(claim: string, turns: Turn[]): Promise<Investigation> {
+export async function investigate(
+  claim: string,
+  turns: Turn[],
+  criticality: BjarneCriticality,
+): Promise<Investigation> {
   const response = await fetch("/api/avslagsgenerator/investigate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns }),
+    body: JSON.stringify({ claim, turns, criticality }),
   });
   const body: unknown = await response.json();
   if (!response.ok) {
