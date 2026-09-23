@@ -18,21 +18,52 @@ export type Investigation = {
   escalation: string;
 };
 
-export async function investigate(
-  claim: string,
-  turns: Turn[],
-  policyId: PolicyId,
-  criticality: BjarneCriticality,
-): Promise<Investigation> {
-  const response = await fetch("/api/avslagsgenerator/investigate", {
+export type BossQuestion = {
+  message: string;
+  question: string;
+};
+
+export type BossReview = {
+  message: string;
+  scrutiny: string;
+  conclusion: "possible_issue" | "nothing_found" | "needs_information";
+};
+
+async function postReview<T>(path: string, payload: object): Promise<T> {
+  const response = await fetch(`/api/avslagsgenerator/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns, criticality, policyId }),
+    body: JSON.stringify(payload),
   });
   const body: unknown = await response.json();
   if (!response.ok) {
     throw new Error(body && typeof body === "object" && "error" in body && typeof body.error === "string"
       ? body.error : "Bjarne mistet papirene sine. Prøv igjen om litt.");
   }
-  return body as Investigation;
+  return body as T;
+}
+
+export async function investigate(
+  claim: string,
+  turns: Turn[],
+  policyId: PolicyId,
+  criticality: BjarneCriticality,
+): Promise<Investigation> {
+  return postReview<Investigation>("investigate", { claim, turns, criticality, policyId });
+}
+
+export type BossCase = { claim: string; turns: Turn[]; bjarne: Investigation };
+
+function bossPayload({ claim, turns, bjarne }: BossCase) {
+  return {
+    claim, turns, bjarne: { message: bjarne.message, status: bjarne.status, reasoningSummary: bjarne.reasoningSummary },
+  };
+}
+
+export async function escalate(context: BossCase): Promise<BossQuestion> {
+  return postReview<BossQuestion>("escalate", bossPayload(context));
+}
+
+export async function answerBoss(context: BossCase, question: string, answer: string): Promise<BossReview> {
+  return postReview<BossReview>("escalate/answer", { ...bossPayload(context), question, answer });
 }
