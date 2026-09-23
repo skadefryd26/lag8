@@ -1,4 +1,5 @@
 import { requestGateway } from "../../ai/gateway.js";
+import { offerInnboHandoff } from "./handoff.js";
 import { getChunks, searchVilkar, type VilkarHit } from "../vilkar/vilkar-db.js";
 import { clausesFor, policies, sourceFor, type PolicyId } from "./vilkar.js";
 
@@ -21,6 +22,7 @@ export type Investigation = {
   coverage: "possible_rejection" | "unclear" | "investigating";
   source: ReturnType<typeof sourceFor>;
   escalation: string;
+  handoffId: string | null;
   clauses: CitedClause[];
 };
 
@@ -75,7 +77,7 @@ const schema = {
 } as const;
 
 type ModelClause = { chunkId: string; bjarneTwist: string };
-type Candidate = Omit<Investigation, "coverage" | "source" | "escalation" | "clauses"> & { sourceId: string; clauses?: unknown };
+type Candidate = Omit<Investigation, "coverage" | "source" | "escalation" | "clauses" | "handoffId"> & { sourceId: string; clauses?: unknown };
 
 /** Slår opp modellens chunkId-er i databasen. Ukjente ID-er forkastes, så Bjarne aldri kan vise et oppdiktet vilkår. */
 async function resolveClauses(clauses: unknown, allowed: Set<string>): Promise<CitedClause[]> {
@@ -135,7 +137,7 @@ export async function investigate(claim: string, turns: Turn[], policyId: Policy
 
   if (finished ? result.status === "investigating" : result.status !== "investigating") throw new Error("Bjarne forsøkte å avsi dom på feil tidspunkt.");
   if (!finished && !result.nextQuestion.trim()) throw new Error("Bjarne glemte neste spørsmål.");
-  if (!finished) return { ...result, done: false, coverage: "investigating", source: null, escalation: "", clauses };
+  if (!finished) return { ...result, done: false, coverage: "investigating", source: null, escalation: "", clauses, handoffId: null };
 
   if (!result.reasoningSummary.trim()) throw new Error("Bjarne glemte å begrunne sluttresultatet.");
   const source = sourceFor(policyId, result.sourceId);
@@ -143,9 +145,11 @@ export async function investigate(claim: string, turns: Turn[], policyId: Policy
     // An unsourced rejection must not appear as a policy finding. Turn it into fictional paperwork.
     return { ...result, status: "referred", message: "*Sukk.* Avslagsgrunnlaget forsvant i arkivet. Saken sendes videre.",
       thirdParty: "Det fiktive kontoret for bortkomne avslagsgrunnlag", possibleIssue: "", reasoningSummary: "Ingen etterprøvbar kilde fra valgt produkt underbygger et avslag.",
-      done: true, nextQuestion: "", coverage: "unclear", source: null, escalation: "", clauses };
+      done: true, nextQuestion: "", coverage: "unclear", source: null, escalation: "", clauses, handoffId: null };
   }
   if (result.status === "referred" && !result.thirdParty.trim()) throw new Error("Bjarne glemte hvem saken skulle sendes til.");
   return { ...result, done: true, nextQuestion: "", coverage: result.status === "possible_rejection" ? "possible_rejection" : "unclear",
-    source: result.status === "possible_rejection" ? source : null, escalation: "", clauses };
+    source: result.status === "possible_rejection" ? source : null, escalation: "", clauses,
+    handoffId: policyId === "reisePluss" && result.status === "possible_rejection"
+      ? offerInnboHandoff(claim, turns, result.possibleIssue) : null };
 }

@@ -14,11 +14,14 @@ export type Investigation = {
   reasoningSummary: string;
   thirdParty: string;
   done: boolean;
-  coverage: "possible_rejection" | "possibly_covered" | "unclear" | "investigating";
+  coverage: "possible_rejection" | "unclear" | "investigating";
   source: { product: string; url: string; page: number; section: string; excerpt: string } | null;
   escalation: string;
+  handoffId: string | null;
   clauses: CitedClause[];
 };
+
+export type InnboHandoff = { line: string; context: string };
 
 export type BossQuestion = {
   message: string;
@@ -31,7 +34,7 @@ export type BossReview = {
   conclusion: "possible_issue" | "nothing_found" | "needs_information";
 };
 
-async function postReview<T>(path: string, payload: object): Promise<T> {
+async function postReview<T>(path: string, payload: object, defaultError = "Bjarne mistet papirene sine. Prøv igjen om litt."): Promise<T> {
   const response = await fetch(`/api/avslagsgenerator/${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -40,9 +43,13 @@ async function postReview<T>(path: string, payload: object): Promise<T> {
   const body: unknown = await response.json();
   if (!response.ok) {
     throw new Error(body && typeof body === "object" && "error" in body && typeof body.error === "string"
-      ? body.error : "Bjarne mistet papirene sine. Prøv igjen om litt.");
+      ? body.error : defaultError);
   }
   return body as T;
+}
+
+export async function handoffToInnbo(handoffId: string): Promise<InnboHandoff> {
+  return postReview<InnboHandoff>("handoff", { handoffId }, "Innbo-Bjarne tok ikke telefonen. Prøv igjen.");
 }
 
 export async function investigate(
