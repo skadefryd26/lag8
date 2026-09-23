@@ -17,29 +17,26 @@ function mockAnswer(sourceId: string, status = "possible_rejection") {
     assert.match(request.input, /innboPluss/);
     assert.doesNotMatch(request.input, /reise-mobil/);
     const answer = {
-      message: "*Sukk.* Jeg undersøkte saken.", status, nextQuestion: "", rejectionHope: 43,
+       message: "*Sukk.* Jeg undersøkte saken.", status, nextQuestion: status === "investigating" ? "Hva skjedde videre?" : "", rejectionHope: 43,
       claimSummary: "Fiktiv vannskade", relevantFacts: ["Vann på mobil"],
       possibleIssue: "Mulig unntak", reasoningSummary: "Begrunnelsen er betinget.",
-      done: true, sourceId, escalation: "Bjarne er bekymret for kaffekvaliteten.",
+       done: status !== "investigating", sourceId, escalation: "Bjarne er bekymret for kaffekvaliteten.",
     };
     return new Response(JSON.stringify({ output: [{ content: [{ text: JSON.stringify(answer) }] }] }), { status: 200 });
   };
 }
 
-const turns: Turn[] = [
-  { question: "Hva skjedde?", answer: "Den falt." },
-  { question: "Hvor?", answer: "Hjemme." },
-];
+const turns: Turn[] = Array.from({ length: 5 }, (_, index) => ({ question: `Skadespørsmål ${index + 1}?`, answer: "Det skjedde hjemme." }));
 
 test("mulig avslag må ha kilde fra valgt produkt", async () => {
   mockAnswer("reise-mobil");
-  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
+  const invalid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
   assert.equal(invalid.coverage, "unclear");
   assert.equal(invalid.source, null);
   assert.equal(invalid.possibleIssue, "");
 
   mockAnswer("innbo-uhell");
-  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
+  const valid = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
   assert.equal(valid.coverage, "possible_rejection");
   assert.match(valid.source?.url ?? "", /Innbo-Pluss.*#page=4$/);
   assert.equal(valid.escalation, "");
@@ -47,8 +44,15 @@ test("mulig avslag må ha kilde fra valgt produkt", async () => {
 
 test("satirisk eskalering er adskilt fra dekningsgrunnlag", async () => {
   mockAnswer("", "bjarne_lost");
-  const result = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral");
+  const result = await investigate("Fiktiv vannskade", turns, "innboPluss", "neutral", true);
   assert.equal(result.coverage, "possibly_covered");
   assert.equal(result.source, null);
   assert.match(result.escalation, /kaffe/);
+});
+
+test("Bjarne stiller fem skadespørsmål før personforhør", async () => {
+  mockAnswer("", "investigating");
+  const result = await investigate("Fiktiv vannskade", turns.slice(0, 4), "innboPluss", "neutral");
+  assert.equal(result.status, "investigating");
+  assert.equal(result.nextQuestion, "Hva skjedde videre?");
 });

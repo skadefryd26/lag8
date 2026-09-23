@@ -85,6 +85,7 @@ button { font: inherit; }
 .welcome-icon { position: absolute; top: 23px; right: 26px; font-size: 2.5rem; transform: rotate(12deg); }
 .composer { margin-top: 16px; padding: 18px; border-radius: 16px; }
 .criticality-picker { margin-bottom: 18px; }
+.phase-hint { padding: 12px 15px; border-left: 3px solid #edbf56; background: rgba(237, 191, 86, .08); line-height: 1.5; }
 .criticality-picker .mantine-SegmentedControl-root { border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; }
 .composer .mantine-Textarea-input { padding: 16px; border: 1px solid rgba(237, 191, 86, .24); background: #0e2017; color: #f6edda; font-size: 1rem; line-height: 1.55; }
 .composer .mantine-Textarea-input:focus { border-color: #edbf56; }

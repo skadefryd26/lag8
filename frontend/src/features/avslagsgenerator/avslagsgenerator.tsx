@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { investigate, type BjarneCriticality, type Investigation, type PolicyId, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
+const claimQuestions = 5;
 const policyOptions: { label: string; value: PolicyId }[] = [
   { label: "Reise Pluss", value: "reisePluss" },
   { label: "Innbo Pluss", value: "innboPluss" },
@@ -50,11 +51,12 @@ export function Avslagsgenerator() {
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: ({ text, history, policy, tone }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality }) =>
-      investigate(text, history, policy, tone),
+    mutationFn: ({ text, history, policy, tone, forceVerdict }: { text: string; history: Turn[]; policy: PolicyId; tone: BjarneCriticality; forceVerdict?: boolean }) =>
+      investigate(text, history, policy, tone, forceVerdict),
   });
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
+  const personalPhase = turns.length >= claimQuestions && !latest?.done;
 
   useEffect(() => {
     if (started) bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -77,6 +79,17 @@ export function Avslagsgenerator() {
       // Keep the draft for a retry; the mutation renders the error below the composer.
     } finally {
       setPendingText("");
+    }
+  }
+
+  async function demandVerdict() {
+    if (!personalPhase || mutation.isPending) return;
+    try {
+      const result = await mutation.mutateAsync({ text: claim, history: turns, policy: policyId, tone: criticality, forceVerdict: true });
+      setExchanges((previous) => [...previous, { answer: "Jeg krever en dom nå.", response: result }]);
+      setDraft("");
+    } catch {
+      // Keep the conversation and draft intact so the player can try again.
     }
   }
 
@@ -110,12 +123,12 @@ export function Avslagsgenerator() {
             <Badge color="yellow" variant="light" size="lg">EN HELT SERIØS U-SERIØS UNDERSØKELSE</Badge>
             <Title order={1}>Avslags<span>generatoren.</span></Title>
             <Text className="intro-lead">Bjarne har ett mål: finne en grunn til å si nei.</Text>
-            <Text c="dimmed" className="intro-description">Fortell hva som skjedde. Bjarne stiller spørsmål til han finner noe som faktisk kan bety noe – eller må innrømme nederlag.</Text>
+            <Text c="dimmed" className="intro-description">Finn på en skade og en oppdiktet figur. Bjarne stiller fem spørsmål om skaden, og gir seg deretter løs på figurens stadig mer tvilsomme bakgrunn.</Text>
             <div className="intro-divider" />
           </section>
         ) : (
           <section className="conversation-heading">
-            <Text className="eyebrow">SAKSNUMMER 001 · UNDER BEHANDLING</Text>
+            <Text className="eyebrow">SAKSNUMMER 001 · {latest?.done ? "AVSLUTTET" : personalPhase ? "PERSONFORHØR" : `SKADEFORHØR ${Math.min(turns.length + 1, claimQuestions)} / ${claimQuestions}`}</Text>
             <Group justify="space-between" align="end" gap="md">
               <Title order={1}>Bjarnes undersøkelse<span>.</span></Title>
               <Button onClick={restart} variant="subtle" color="gray" size="sm">Ny sak ↺</Button>
@@ -136,7 +149,7 @@ export function Avslagsgenerator() {
                     <div className="message-row">
                       <div className="avatar" aria-hidden="true">B</div>
                       <div className="message-bubble bjarne-bubble">
-                        <Text className="bubble-label">BJARNE · SAKSBEHANDLER</Text>
+                        <Text className="bubble-label">BJARNE · {index >= claimQuestions ? "PERSONGRANSKER" : "SAKSBEHANDLER"}</Text>
                         <Text>{exchange.response.message}</Text>
                         {!exchange.response.done ? <Text className="bjarne-question" mt="sm">{exchange.response.nextQuestion}</Text> : null}
                       </div>
@@ -176,6 +189,7 @@ export function Avslagsgenerator() {
                     <Text c="dimmed" size="xs" mt="xs">{criticalityDescriptions[criticality]}</Text>
                   </div>
                 ) : null}
+                {personalPhase ? <Text className="phase-hint" size="sm" mb="sm">Fem skadespørsmål er unnagjort. Nå gransker Bjarne den oppdiktede figuren. Ikke oppgi ekte navn, bankkontoer eller andre personopplysninger.</Text> : null}
                 <Textarea
                   aria-label={started ? "Svar på Bjarnes spørsmål" : "Hva har skjedd?"}
                   placeholder={started ? "Svar Bjarne med egne ord ..." : "F.eks. Jeg mistet mobilen i toalettet ..."}
@@ -194,6 +208,7 @@ export function Avslagsgenerator() {
                     {started ? "Send svar →" : "La Bjarne undersøke saken →"}
                   </Button>
                 </Group>
+                {personalPhase ? <Button type="button" onClick={demandVerdict} disabled={mutation.isPending} variant="outline" color="yellow" mt="sm" fullWidth>Krev en dom fra Bjarne nå</Button> : null}
                 {mutation.isError ? <Alert color="red" title="Bjarne mistet tråden" mt="md">{mutation.error.message} Svaret ditt er fortsatt i feltet.</Alert> : null}
               </form>
             ) : <Button className="restart-button" onClick={restart} color="yellow" size="lg">Gi Bjarne en ny sak →</Button>}
