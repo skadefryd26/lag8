@@ -5,8 +5,7 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 
 import { investigate, type BjarneCriticality, type Investigation, type Turn } from "./investigation-api";
 
 const examples = ["Jeg mistet mobilen i toalettet", "Sykkelen min ble stjålet", "Kjelleren fikk vannskade"];
-const claimQuestions = 2;
-const minimumAnswers = 8;
+const claimQuestions = 5;
 const criticalityOptions: { value: BjarneCriticality; label: string }[] = [
   { value: "nice", label: "Snill" },
   { value: "neutral", label: "Nøytral" },
@@ -22,13 +21,13 @@ type Exchange = { answer: string; response: Investigation };
 
 function VerdictCard({ result }: { result: Investigation }) {
   const issue = result.status === "possible_rejection";
+  const lost = result.status === "bjarne_lost";
   return (
-    <Paper className={`reveal-card ${issue ? "reveal-issue" : "reveal-unknown"}`} p={{ base: "lg", sm: "xl" }} radius="lg" role="status">
-      <Text className="eyebrow">BJARNES FIKTIVE SLUTTRESULTAT</Text>
-      <Title order={2} mt="xs">{issue ? "Mulig avslag 👀" : "Sendt til videre utredning 🗂️"}</Title>
+    <Paper className={`reveal-card ${lost ? "reveal-lost" : issue ? "reveal-issue" : "reveal-unknown"}`} p={{ base: "lg", sm: "xl" }} radius="lg" role="status">
+      <Text className="eyebrow">SAKEN ER FERDIG UNDERSØKT</Text>
+      <Title order={2} mt="xs">{lost ? "Bjarne tapte 🎉" : issue ? "Bjarne fant noe 👀" : "Bjarne trenger mer 🤔"}</Title>
       <Text className="reveal-message" mt="md">{result.message}</Text>
       {issue && result.possibleIssue ? <Text className="issue-note" mt="md">{result.possibleIssue}</Text> : null}
-      {!issue ? <Text className="issue-note" mt="md">Mottaker: {result.thirdParty} (oppdiktet)</Text> : null}
       <Text mt="md">{result.reasoningSummary}</Text>
       <Text c="dimmed" size="sm" mt="lg">Dette er en leken vurdering, ikke en dekningsavgjørelse. Faktisk dekning avhenger av forsikringen og vilkårene dine.</Text>
     </Paper>
@@ -44,8 +43,8 @@ export function Avslagsgenerator() {
   const [criticality, setCriticality] = useState<BjarneCriticality>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const mutation = useMutation({
-    mutationFn: ({ text, history, criticality }: { text: string; history: Turn[]; criticality: BjarneCriticality }) =>
-      investigate(text, history, criticality),
+    mutationFn: ({ text, history, criticality, forceVerdict }: { text: string; history: Turn[]; criticality: BjarneCriticality; forceVerdict?: boolean }) =>
+      investigate(text, history, criticality, forceVerdict),
   });
   const latest = exchanges.at(-1)?.response;
   const started = claim.length > 0;
@@ -72,6 +71,17 @@ export function Avslagsgenerator() {
       // Keep the draft for a retry; the mutation renders the error below the composer.
     } finally {
       setPendingText("");
+    }
+  }
+
+  async function demandVerdict() {
+    if (!personalPhase || mutation.isPending) return;
+    try {
+      const result = await mutation.mutateAsync({ text: claim, history: turns, criticality, forceVerdict: true });
+      setExchanges((previous) => [...previous, { answer: "Jeg krever en dom nå.", response: result }]);
+      setDraft("");
+    } catch {
+      // Keep the conversation and draft intact so the player can try again.
     }
   }
 
@@ -105,12 +115,12 @@ export function Avslagsgenerator() {
             <Badge color="yellow" variant="light" size="lg">EN HELT SERIØS U-SERIØS UNDERSØKELSE</Badge>
             <Title order={1}>Avslags<span>generatoren.</span></Title>
             <Text className="intro-lead">Bjarne har ett mål: finne en grunn til å si nei.</Text>
-            <Text c="dimmed" className="intro-description">Finn på en skade og en oppdiktet figur. Etter to skadespørsmål gransker Bjarne figurens bakgrunn, bekjentskaper og mistenkelig mange ukjente detaljer. Minst åtte spørsmål før dommen faller.</Text>
+            <Text c="dimmed" className="intro-description">Finn på en skade og en oppdiktet figur. Bjarne stiller fem spørsmål om skaden, og gir seg deretter løs på figurens stadig mer tvilsomme bakgrunn.</Text>
             <div className="intro-divider" />
           </section>
         ) : (
           <section className="conversation-heading">
-            <Text className="eyebrow">SAKSNUMMER 001 · {latest?.done ? "AVSLUTTET" : personalPhase ? `BAKGRUNNSFORHØR ${turns.length + 1} / ${minimumAnswers}` : `SKADEFORHØR ${Math.min(turns.length + 1, claimQuestions)} / ${claimQuestions}`}</Text>
+            <Text className="eyebrow">SAKSNUMMER 001 · {latest?.done ? "AVSLUTTET" : personalPhase ? "PERSONFORHØR" : `SKADEFORHØR ${Math.min(turns.length + 1, claimQuestions)} / ${claimQuestions}`}</Text>
             <Group justify="space-between" align="end" gap="md">
               <Title order={1}>Bjarnes undersøkelse<span>.</span></Title>
               <Button onClick={restart} variant="subtle" color="gray" size="sm">Ny sak ↺</Button>
@@ -170,7 +180,7 @@ export function Avslagsgenerator() {
                     <Text c="dimmed" size="xs" mt="xs">{criticalityDescriptions[criticality]}</Text>
                   </div>
                 ) : null}
-                {personalPhase ? <Text className="phase-hint" size="sm" mb="sm">To skadespørsmål er unnagjort. Nå gransker Bjarne den oppdiktede figuren. «Jeg vet ikke» er et gyldig svar, men kan gi saken en komisk omvei. Ikke oppgi ekte navn, kontonumre eller andre personopplysninger.</Text> : null}
+                {personalPhase ? <Text className="phase-hint" size="sm" mb="sm">Fem skadespørsmål er unnagjort. Nå gransker Bjarne den oppdiktede figuren. Ikke oppgi ekte navn, bankkontoer eller andre personopplysninger.</Text> : null}
                 <Textarea
                   aria-label={started ? "Svar på Bjarnes spørsmål" : "Hva har skjedd?"}
                   placeholder={started ? "Svar Bjarne med egne ord ..." : "F.eks. Jeg mistet mobilen i toalettet ..."}
@@ -189,6 +199,7 @@ export function Avslagsgenerator() {
                     {started ? "Send svar →" : "La Bjarne undersøke saken →"}
                   </Button>
                 </Group>
+                {personalPhase ? <Button type="button" onClick={demandVerdict} disabled={mutation.isPending} variant="outline" color="yellow" mt="sm" fullWidth>Krev en dom fra Bjarne nå</Button> : null}
                 {mutation.isError ? <Alert color="red" title="Bjarne mistet tråden" mt="md">{mutation.error.message} Svaret ditt er fortsatt i feltet.</Alert> : null}
               </form>
             ) : <Button className="restart-button" onClick={restart} color="yellow" size="lg">Gi Bjarne en ny sak →</Button>}
@@ -200,7 +211,7 @@ export function Avslagsgenerator() {
             <Paper className="hope-card" p="lg" radius="lg">
               <Text className="eyebrow">BJARNES HÅP OM AVSLAG</Text>
               <Group align="baseline" gap={4} mt="sm"><span className="hope-number">{latest?.rejectionHope ?? 78}</span><span className="hope-percent">%</span></Group>
-              <Progress value={latest?.rejectionHope ?? 78} color="yellow" radius="xl" size="lg" mt="sm" animated={mutation.isPending} />
+              <Progress value={latest?.rejectionHope ?? 78} color={latest?.done && latest.status === "bjarne_lost" ? "teal" : "yellow"} radius="xl" size="lg" mt="sm" animated={mutation.isPending} />
               <Text c="dimmed" size="xs" mt="sm">Kun Bjarnes optimisme. Ikke sannsynlighet for avslag.</Text>
             </Paper>
             <Paper className="case-status" p="lg" radius="lg" mt="md">
