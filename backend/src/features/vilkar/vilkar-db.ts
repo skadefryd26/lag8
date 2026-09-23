@@ -23,12 +23,15 @@ export type VilkarHit = VilkarChunk & { score: number; via: ("vektor" | "ord")[]
 export const vilkarDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../../vilkar");
 const databaseFile = join(vilkarDir, "vilkar.db");
 
-export const products = [
+/** Kjente vilkår. Bare de som faktisk ligger i vilkar/ blir lest inn. */
+const knownProducts = [
   { file: "innbo.pdf", slug: "innbo", name: "Innbo Standard" },
   { file: "innbo-pluss.pdf", slug: "innbo-pluss", name: "Innbo Pluss" },
   { file: "reise.pdf", slug: "reise", name: "Reise" },
   { file: "reise-pluss.pdf", slug: "reise-pluss", name: "Reise Pluss" },
 ] as const;
+
+export const products = knownProducts.filter(({ file }) => existsSync(join(vilkarDir, file)));
 
 const targetChunkLength = 900;
 const navigationLine = /^Nyheter og endringer Forsikringsoversikt/;
