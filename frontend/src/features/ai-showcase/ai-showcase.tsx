@@ -117,8 +117,15 @@ export function AiShowcase() {
         {!activeCase ? (
           <section aria-label="Velg demosak" className="showcase-setup">
             <Text className="eyebrow">01 / VELG EN SAK</Text>
-            {cases.isError ? <Alert color="red" mt="md">{cases.error.message} <Button variant="subtle" onClick={() => cases.refetch()}>Prøv igjen</Button></Alert> : null}
-            {cases.isPending ? <Text mt="md">Bjarne finner fram saksmapper ...</Text> : null}
+           {cases.isError ? (
+             <Alert color="red" mt="md">
+               <Text size="sm">{cases.error.message}</Text>
+               <Group mt="sm" gap="sm">
+                 <Button variant="subtle" onClick={() => cases.refetch()}>Prøv igjen</Button>
+               </Group>
+             </Alert>
+           ) : null}
+           {cases.isPending ? <Text mt="md">Bjarne finner fram saksmapper ...</Text> : null}
             <div className="showcase-cases" role="radiogroup" aria-label="Velg demosak">
               {cases.data?.map((scenario) => (
                 <button
@@ -173,7 +180,7 @@ export function AiShowcase() {
                 <Group mt="lg" gap="sm">
                   {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate({ scenario: activeCase, tone: activeCriticality }); }}>Prøv å starte igjen ↻</Button> : null}
                   {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
-                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => setPlaying(!playing)} disabled={Boolean(error && !nextTurn.isError)}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
+                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => setPlaying(!playing)} disabled={busy || nextTurn.isError}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
                   {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>

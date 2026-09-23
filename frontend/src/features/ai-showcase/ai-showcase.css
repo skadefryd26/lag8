@@ -6,7 +6,7 @@
 .showcase-intro > .mantine-Text-root { max-width: 65ch; line-height: 1.65; }
 .showcase-lead { font-size: clamp(1.25rem, 3vw, 1.7rem); font-weight: 700; }
 .showcase-setup { padding-bottom: 60px; }
-.showcase-cases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 14px 0 22px; }
+.showcase-cases { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 14px 0 22px; }
 .showcase-case { display: flex; min-height: 190px; flex-direction: column; align-items: flex-start; gap: 14px; padding: 22px; border: 1px solid rgba(246, 237, 218, .2); border-radius: 16px; background: rgba(23, 46, 34, .85); box-shadow: 0 10px 24px rgba(0, 0, 0, .16); color: #f6edda; text-align: left; cursor: pointer; transition: border-color .2s, transform .2s, box-shadow .2s; }
 .showcase-case:hover { transform: translateY(-3px); border-color: #edbf56; }
 .showcase-case:active { transform: translateY(-1px); border-color: #edbf56; box-shadow: 0 8px 18px rgba(0, 0, 0, .22); }

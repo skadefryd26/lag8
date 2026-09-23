@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requestGateway } from "../../ai/gateway.js";
 
 const maxShowcaseTurns = 6;
+const maxShowcaseHistoryTurns = maxShowcaseTurns - 1;
 
 const cases = [
   {
@@ -58,7 +59,7 @@ showcaseRouter.post("/answer", async (request, response, next) => {
   const validText = (value: unknown, limit: number): value is string =>
     typeof value === "string" && value.trim().length > 0 && value.length <= limit;
 
-  if (!scenario || !validText(question, 500) || !Array.isArray(turns) || turns.length >= maxShowcaseTurns ||
+  if (!scenario || !validText(question, 500) || !Array.isArray(turns) || turns.length > maxShowcaseHistoryTurns ||
     !turns.every((turn: unknown) => Boolean(turn) && typeof turn === "object" &&
       validText((turn as { question?: unknown }).question, 500) &&
       validText((turn as { answer?: unknown }).answer, 1500))) {
