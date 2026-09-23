@@ -17,11 +17,12 @@ export async function investigate(
   claim: string,
   turns: Turn[],
   criticality: BjarneCriticality,
+  forceVerdict = false,
 ): Promise<Investigation> {
   const response = await fetch("/api/avslagsgenerator/investigate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ claim, turns, criticality }),
+    body: JSON.stringify({ claim, turns, criticality, forceVerdict }),
   });
   const body: unknown = await response.json();
   if (!response.ok) {
