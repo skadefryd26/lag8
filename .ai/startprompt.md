@@ -69,3 +69,11 @@ Feil returnerer `{ error: string }` med 400 for ugyldige meldinger eller kritika
 - Flere AI-dommere som krangler med Bjarne.
 - Lyd, konfetti og eskalerende kaffemåler.
 - Egen generator for fiktive skadesaker.
+
+## Utvidelse: Sjefsagenten
+
+Når Bjarne ikke finner noen konkret mulig avslagsgrunn (`bjarne_lost`), eskaleres den fiktive saken automatisk til en egen, streng AI-sjef. Brukeren kan også be om sjefen etter et av Bjarnes svar, uten å vente på konklusjonen. Sjefen leser den oppgitte saken, samtalen og Bjarnes siste vurdering, og gir en separat, kort og kritisk vurdering på norsk. Granskingen er humoristisk, men sjefen dikter ikke opp kriminalitet, mistenkelige venner, vilkår eller fakta. Manglende opplysninger kan etterspørres, ikke fremstilles som bevis. Frontend viser venting, resultat og en mulighet til å prøve igjen dersom sjefen ikke svarer.
+
+Når sjefen blir bedt om å vurdere en sak underveis, kan brukeren fortsette å skrive til Bjarne mens sjefen tenker, og sende svaret når sjefen er ferdig. Sjefens svar blir liggende ved riktig sted i samtalen; det avslutter ikke Bjarnes spørsmål. Først Bjarnes egen konklusjon avslutter inndatafeltet.
+
+`POST /api/avslagsgenerator/escalate` tar `{ claim, turns, bjarne: { message, status, reasoningSummary } }` og returnerer `{ message, scrutiny, conclusion }`, der `conclusion` er `possible_issue`, `nothing_found` eller `needs_information`. Ugyldig input gir 400; utilgjengelig eller ugyldig gateway-svar gir 502.
