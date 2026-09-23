@@ -173,7 +173,7 @@ export function AiShowcase() {
                 <Group mt="lg" gap="sm">
                   {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate({ scenario: activeCase, tone: activeCriticality }); }}>Prøv å starte igjen ↻</Button> : null}
                   {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
-                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => { nextTurn.reset(); setPlaying(!playing); }} disabled={Boolean(error && !nextTurn.isError)}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
+                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => setPlaying(!playing)} disabled={Boolean(error && !nextTurn.isError)}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
                   {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>
