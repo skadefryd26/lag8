@@ -68,7 +68,12 @@ showcaseRouter.post("/answer", async (request, response, next) => {
   }
 
   try {
-    const input = `Saksfakta (kun disse er sanne): ${scenario.facts}\nOpprinnelig melding: ${scenario.claim}\nTidligere spørsmål og svar (JSON): ${JSON.stringify(turns)}\nBjarnes nye spørsmål: ${JSON.stringify(question)}`;
+    const input = `Saksdata som JSON:\n${JSON.stringify({
+      facts: scenario.facts,
+      originalClaim: scenario.claim,
+      previousTurns: turns,
+      latestQuestion: question,
+    }, null, 2)}`;
     const candidate: unknown = JSON.parse(await requestGateway(input, instructions, "showcase_claimant_answer", answerSchema));
     if (!candidate || typeof candidate !== "object" || !("answer" in candidate) ||
       typeof candidate.answer !== "string" || !candidate.answer.trim() || candidate.answer.length > 1500) {

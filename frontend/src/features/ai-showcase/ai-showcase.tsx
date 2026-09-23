@@ -1,12 +1,12 @@
 import { Alert, Badge, Button, Container, Group, Paper, Progress, SegmentedControl, Stack, Text, Title } from "@mantine/core";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { BjarneCriticality, Investigation, Turn } from "../avslagsgenerator/investigation-api";
 import { answerAsClaimant, askBjarne, getShowcaseCases, type ShowcaseCase } from "./showcase-api";
 import "./ai-showcase.css";
 
-type Exchange = { answer: string; response: Investigation };
+type Exchange = { id: string; answer: string; response: Investigation };
 type PendingAnswer = { question: string; answer: string };
 
 export function AiShowcase() {
@@ -44,7 +44,7 @@ export function AiShowcase() {
     },
     onSuccess: ({ answer, updated, response }) => {
       setTurns(updated);
-      setExchanges((previous) => [...previous, { answer, response }]);
+      setExchanges((previous) => [...previous, { id: crypto.randomUUID(), answer, response }]);
       setLatest(response);
       setPendingAnswer(null);
       setSpeaker(null);
@@ -95,6 +95,25 @@ export function AiShowcase() {
     nextTurn.mutate({ scenario: activeCase, question: latest.nextQuestion, history: turns, savedAnswer: pendingAnswer, tone: activeCriticality });
   }
 
+  function onCaseKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number) {
+    if (!cases.data?.length) return;
+
+    let nextIndex = index;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % cases.data.length;
+    if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + cases.data.length) % cases.data.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = cases.data.length - 1;
+    if (nextIndex === index) return;
+
+    event.preventDefault();
+    const nextCase = cases.data[nextIndex];
+    if (!nextCase) return;
+    setSelectedId(nextCase.id);
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLButtonElement>(`button[data-case-id="${nextCase.id}"]`)?.focus();
+    });
+  }
+
   const busy = opening.isPending || nextTurn.isPending;
   const error = opening.error ?? nextTurn.error;
   const turnsUsed = turns.length + (pendingAnswer ? 1 : 0);
@@ -127,15 +146,17 @@ export function AiShowcase() {
            ) : null}
            {cases.isPending ? <Text mt="md">Bjarne finner fram saksmapper ...</Text> : null}
             <div className="showcase-cases" role="radiogroup" aria-label="Velg demosak">
-              {cases.data?.map((scenario) => (
+              {cases.data?.map((scenario, index) => (
                 <button
                   key={scenario.id}
                   type="button"
+                  data-case-id={scenario.id}
                   role="radio"
                   aria-checked={selectedCase?.id === scenario.id}
                   tabIndex={selectedCase?.id === scenario.id || (!selectedId && selectedCase?.id === scenario.id) ? 0 : -1}
                   className={`showcase-case ${selectedCase?.id === scenario.id ? "selected" : ""}`}
                   onClick={() => setSelectedId(scenario.id)}
+                  onKeyDown={(event) => onCaseKeyDown(event, index)}
                 >
                   <span className="eyebrow">{scenario.category}</span>
                   <strong>{scenario.title}</strong>
@@ -165,8 +186,8 @@ export function AiShowcase() {
                 <Stack className="showcase-transcript" gap="lg" aria-live="polite">
                   <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{activeCase.claim}</Text></div></div>
                   {openingResult ? <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{openingResult.message}</Text>{!openingResult.done ? <Text className="bjarne-question" mt="sm">{openingResult.nextQuestion}</Text> : null}</div></div> : null}
-                  {exchanges.map(({ answer, response }, index) => (
-                    <div className="showcase-exchange" key={index}>
+                  {exchanges.map(({ id, answer, response }) => (
+                    <div className="showcase-exchange" key={id}>
                       <div className="message-row message-row-user"><div className="message-bubble showcase-claimant"><Text className="bubble-label">SKADELIDT · AI</Text><Text>{answer}</Text></div></div>
                       <div className="message-row"><div className="avatar" aria-hidden="true">B</div><div className="message-bubble bjarne-bubble"><Text className="bubble-label">BJARNE · AI</Text><Text>{response.message}</Text>{!response.done ? <Text className="bjarne-question" mt="sm">{response.nextQuestion}</Text> : null}</div></div>
                     </div>
@@ -180,7 +201,7 @@ export function AiShowcase() {
                 <Group mt="lg" gap="sm">
                   {opening.isError ? <Button color="yellow" onClick={() => { opening.reset(); opening.mutate({ scenario: activeCase, tone: activeCriticality }); }}>Prøv å starte igjen ↻</Button> : null}
                   {!latest?.done && latest && !playing ? <Button color="yellow" onClick={advance} disabled={busy}>{error ? "Prøv steget igjen ↻" : "Neste replikk →"}</Button> : null}
-                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => setPlaying(!playing)} disabled={busy || nextTurn.isError}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
+                  {!latest?.done && latest ? <Button variant="outline" color="yellow" onClick={() => { if (!playing && nextTurn.isError) nextTurn.reset(); setPlaying(!playing); }} disabled={busy}>{playing ? "Pause etter denne replikken ‖" : "▶ Spill av automatisk"}</Button> : null}
                   {latest?.done ? <Button color="yellow" onClick={resetStage}>Prøv en annen sak →</Button> : null}
                 </Group>
               </div>
