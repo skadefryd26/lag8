@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { requestGateway } from "../../ai/gateway.js";
 import type { AnswerRecord, GameGuess, GameQuestion, QuestionOption } from "./game-types.js";
 
-const gatewayUrl = "https://genai.gjensidige.io/openai/v1/responses";
 const maxQuestions = 5;
 
 const bjarneInstructions = `Du er Bjarne, den svært kompetente, litt arrogante og kaffetørste spillverten i det fiktive forsikringsspillet Skadeorakelet. Spilleren tenker på en absurd, helt oppdiktet skadehendelse. Du skal gjette hendelsen med så få spørsmål som mulig. Spørsmålene og alternativene dine skal være latterlige, men informative. Du må aldri be om eller bruke ekte kunde-, skade- eller personopplysninger. Humoren handler bare om fiktive situasjoner, forsikringsverdenen og din egen kaffemangel. Svar på norsk.`;
@@ -49,56 +49,6 @@ const earlyGuessSchema = {
   required: ["shouldGuess", "confidence"],
   additionalProperties: false,
 } as const;
-
-function readText(response: unknown): string | undefined {
-  if (!response || typeof response !== "object" || !("output" in response) || !Array.isArray(response.output)) {
-    return undefined;
-  }
-
-  for (const item of response.output) {
-    if (!item || typeof item !== "object" || !("content" in item) || !Array.isArray(item.content)) {
-      continue;
-    }
-    for (const content of item.content) {
-      if (content && typeof content === "object" && "text" in content && typeof content.text === "string") {
-        return content.text;
-      }
-    }
-  }
-}
-
-async function requestGateway(input: string, name: string, schema: object): Promise<string> {
-  const token = process.env.AI_GATEWAY_TOKEN;
-  if (!token) {
-    throw new Error("AI_GATEWAY_TOKEN mangler. Bjarne jobber ikke gratis, særlig ikke uten kaffe.");
-  }
-
-  const response = await fetch(gatewayUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-5.6-luna",
-      instructions: bjarneInstructions,
-      input,
-      text: {
-        format: { type: "json_schema", name, strict: true, schema },
-      },
-      stream: false,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`AI-gatewayen svarte med ${response.status}.`);
-  }
-  const text = readText(await response.json());
-  if (!text) {
-    throw new Error("AI-gatewayen svarte uten et spillbart svar.");
-  }
-  return text;
-}
 
 function parseQuestion(text: string): GameQuestion {
   const candidate: unknown = JSON.parse(text);
@@ -151,6 +101,7 @@ export async function createQuestion(history: readonly AnswerRecord[]): Promise<
   const nextNumber = history.length + 1;
   const text = await requestGateway(
     `Still spørsmål ${nextNumber} av maksimalt ${maxQuestions} for å identifisere en fiktiv skadehendelse spilleren har i hodet. Bruk historikken under for å velge det mest informasjonstette neste spørsmålet. Spørsmålet må kunne besvares uten å forklare seg, med 2-4 korte og gjensidig utelukkende alternativer. Ikke gjett enda. Ikke bruk ekte forsikringsvilkår eller reelle hendelser.\n\nHistorikk:\n${historyPrompt(history)}`,
+    bjarneInstructions,
     "skadeorakelet_question",
     questionSchema,
   );
@@ -160,6 +111,7 @@ export async function createQuestion(history: readonly AnswerRecord[]): Promise<
 export async function createGuess(history: readonly AnswerRecord[]): Promise<GameGuess> {
   const text = await requestGateway(
     `Dette er slutten av runden. Ut fra svarhistorikken skal du med selvsikker, morsom stemme gjette én konkret, absurd og helt fiktiv skadehendelse spilleren tenker på. Du må være så presis som svarene tillater. Oppgi sikkerhet mellom 55 og 100 og en kort dom fra Bjarne. Ikke be om flere opplysninger.\n\nHistorikk:\n${historyPrompt(history)}`,
+    bjarneInstructions,
     "skadeorakelet_guess",
     guessSchema,
   );
@@ -176,6 +128,7 @@ export async function shouldGuess(history: readonly AnswerRecord[]) {
 
   const text = await requestGateway(
     `Vurder om du nå kan gjette skadehendelsen med minst 85 prosent sikkerhet. Du får bare gjette tidlig hvis historikken avgrenser en tydelig, konkret hendelse. Hvis flere rimelige hendelser fortsatt passer, velger du false og stiller et spørsmål til.\n\nHistorikk:\n${historyPrompt(history)}`,
+    bjarneInstructions,
     "skadeorakelet_early_guess",
     earlyGuessSchema,
   );
